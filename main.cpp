@@ -1,14 +1,12 @@
 // Current Task
+// Add Power Pellets
 // Step 1:
-// Add Mechanism to detect collision between the Ghost and the PacMan
+// Game Engine will randomly spawn the Power Pellets across the board at random time intervals
 // Step 2:
-// Add Lives
+// Solve the scenario via producer/consumer
+// PacMan can eat it but only one at a time
 // Step 3:
-// PacMan goes to its initial postion and so does the ghost
-// Step 4:
-// Achieve step 3 by destroying and re-creating ghost threads
-// Step 5:
-// Add Animation of Bomb Blast
+// Ghost will turn blue for a while and PacMan and can eat the ghost accordingly 
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
@@ -22,20 +20,30 @@
 #define width 28
 #define cellSize 16   // each block on the game grid corresponds to a 16*16 cell 
 
+const int numOfPowerPellets = 4;
+
 // Declare all the Global Variables here for the all the threads to access
 std::atomic<bool> exit_thread_flag{false};
 sf::RenderWindow window;
 sf::RectangleShape rectangle;
-sf::Texture pacManTex, pacManDeathTex, ghostTex;
-sf::Sprite pacManSprite,pacManDeathSprite, ghostSprite1;
+sf::Texture pacManTex, pacManDeathTex, powerPelletTex, ghostTex;
+sf::Sprite pacManSprite,pacManDeathSprite, powerPelletSprite[numOfPowerPellets], ghostSprite1;
 pthread_mutex_t waitForPacMan, waitForInput, waitForGameEngine, waitForDraw, waitForRender;
 pthread_mutex_t waitForGhost[1], waitForGameEngine1[1];
+
+pthread_mutex_t powerPellet;
+
 int direction = 0;
 int lives = 3;
+bool powerUp = false;
 int readCount = 0;            // keeps track of the number of ghosts reading the maze at a time
 sem_t ghostMutex, mazeAccess; // semaphores used to address the Reader/Writer 
                               // scenario in the context of the PacMan and the Ghosts
-
+int currentPowerPellets = 0;
+int powerPelletLoc[numOfPowerPellets][2] = { {16,16},    
+                                             {26*16,16},
+                                             {16,29*16},
+                                             {26*16,29*16} };
 
 // the underlying 2D Maze
 int maze[height][width] = {
@@ -71,9 +79,33 @@ int maze[height][width] = {
   {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1},
   {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1} };  
 
+int cleanup_pop_arg = 0;
+
+class info {
+public:
+  int i;
+};
+
+void ghostThreadCleanupHandler(void* arg) {
+  info* temp = (info*)arg;
+  s::cout<<temp->i;
+  s::cout<<"In Ghost Thread Cleanup Handler\n";
+  //s::cout<<((*info)arg)->i;
+  return;
+}
+
+
 
 void* ghost(void* anything) {
 
+  info* infoBlock = new info;
+  infoBlock->i = 10;
+
+  pthread_cleanup_push(ghostThreadCleanupHandler, infoBlock);
+  //pthread_cleanup_push_defer_np(ghostThreadCleanupHandler, NULL);
+
+  //pthread_cleanup_push(ghostThreadCleanupHandler, NULL);
+  
   // set the relevant cancel states for the thread
   pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
   pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
@@ -189,7 +221,13 @@ void* ghost(void* anything) {
     pthread_mutex_unlock(&waitForGhost[0]);
     pthread_mutex_lock(&waitForGameEngine1[0]);
   }
-
+  //int temp = 0;
+  // DO NOT REMOVE THE BELOW COUT STATEMENT
+  // IT DOES NOT PRINT ANYTHING HOWEVER IT SOMEHOW PREVENTS A MASSIVE ERROR
+  // SOMEHOW ENSURES THAT THE CLEAN UP ROUTINE RUNS PROPERLY
+  s::cout<<"Here\n";
+  // pthread_cleanup_pop(cleanup_pop_arg);
+  pthread_cleanup_pop(1);
   pthread_exit(NULL);
 }
 
@@ -208,6 +246,7 @@ void* pacMan(void* anything) {
 
   int localDirection, xPos, yPos;
   sf::Vector2f currPos;
+  sf::Clock powerUpClock;
 
   while(!exit_thread_flag) {
 
@@ -244,6 +283,40 @@ void* pacMan(void* anything) {
       sem_post(&mazeAccess);
 
     }
+
+    if(!powerUp) {
+      pthread_mutex_lock(&powerPellet);
+      if(currentPowerPellets > 0) {
+        
+        for(int i = 0; i < numOfPowerPellets; ++i) {
+          sf::Vector2f temp1 = powerPelletSprite[i].getPosition();
+          sf::Vector2f temp2 = pacManSprite.getPosition();
+          //sf::Vector2f temp = powerPelletSprite[i].getPosition() ;
+          //s::cout<<temp.x<<" "<<temp.y<<s::endl;
+          //temp = pacManSprite.getPosition();
+          //s::cout<<pacManSprite.getPosition()<<s::endl;
+          //s::cout<<temp.x<<" "<<temp.y<<s::endl;
+          if(temp1.x == temp2.x && temp1.y == temp2.y) {
+          //if(powerPelletSprite[i].getPosition() == pacManSprite.getPosition()) {
+            powerPelletSprite[i].setPosition(-10, -10);
+            s::cout<<"Power Pellet Acquired\n";
+            break;
+          }
+        }
+        powerUp = true;
+        --currentPowerPellets;
+        powerUpClock.restart();
+      }
+      pthread_mutex_unlock(&powerPellet);
+      // unlock
+    }
+    else {
+      if(powerUpClock.getElapsedTime().asSeconds() > 10) {
+        //s::cout<<"Lost The Power Up\n";
+        powerUp = false;
+      }
+    }
+    s::cout<<"1";
     // signal the game engine thread that it can proceed further
     pthread_mutex_unlock(&waitForPacMan);
   }
@@ -301,6 +374,8 @@ void* gameEngine(void* anything) {
   pthread_mutex_init(&waitForGameEngine1[0], NULL);
   pthread_mutex_lock(&waitForGameEngine1[0]);
 
+  pthread_mutex_init(&powerPellet, NULL);
+
   // initialize thread attributes
   pthread_attr_t attr;
   pthread_attr_init(&attr);
@@ -327,7 +402,33 @@ void* gameEngine(void* anything) {
   sf::Vector2f pacManPos, ghostPos;
 
   bool restart = false;
+  bool ghostDead = false;
+
+  sf::Clock powerPelletGeneratorTimer;
+  int powerPelletPos = 0;     // points to the first power pellet that has to be created 
+  sf::Vector2f temp(-10,-10);
   while(!exit_thread_flag) {
+
+    if(powerPelletGeneratorTimer.getElapsedTime().asSeconds() > 5) {
+      //s::cout<<"In Here\n";
+      pthread_mutex_lock(&powerPellet);
+      if(currentPowerPellets < numOfPowerPellets) {
+        ++currentPowerPellets;
+        for(int i = 0; i < numOfPowerPellets; ++i) {
+          if(powerPelletSprite[powerPelletPos].getPosition() == temp) {
+            powerPelletSprite[powerPelletPos].setPosition(powerPelletLoc[powerPelletPos][0], powerPelletLoc[powerPelletPos][1]);
+            powerPelletPos = (powerPelletPos+1)%numOfPowerPellets;
+            //powerPelletGeneratorTimer.restart();
+            //++currentPowerPellets;
+            break;
+          }
+          else
+            powerPelletPos = (powerPelletPos+1)%numOfPowerPellets;
+        }
+      }
+      powerPelletGeneratorTimer.restart();
+      pthread_mutex_unlock(&powerPellet);
+    }
 
     // recreate the PacMan and the Ghost Threads after collision
     if(restart) {
@@ -342,7 +443,19 @@ void* gameEngine(void* anything) {
         exit(-1);
       }
       restart = false;
+      ghostDead = false;
+    } 
+    else if(ghostDead) {
+      rc = pthread_create(&ghostThread1, &attr, ghost, NULL);
+      if(rc) {
+        s::cout<<"Error unable to create Ghost thread. Exiting\n";
+        exit(-1);
+      }
+      ghostDead = false;
     }
+    
+
+
     // wait for the PacMan thread to execute
     pthread_mutex_lock(&waitForPacMan);
 
@@ -356,6 +469,9 @@ void* gameEngine(void* anything) {
       if(pacManPos == ghostSprite1.getPosition()) {
         // destroy the Ghost Threads
         pthread_cancel(ghostThread1);
+        ghostDead = true;
+        if(powerUp)
+          break;
         // destroy the PacMan Threads
         pthread_cancel(pacManThread);
         //s::cout<<"Collision Check\n";
@@ -470,6 +586,8 @@ void userInterface() {
     // draw everything else on the screen
     window.draw(pacManSprite);
     window.draw(ghostSprite1);
+    for(int i = 0; i < numOfPowerPellets; ++i)
+      window.draw(powerPelletSprite[i]);
     // ensures that the game engine can now render, after 
     // the relevant sprites have been draw on the window
     pthread_mutex_unlock(&waitForDraw);
@@ -495,19 +613,13 @@ void destroyMutexes() {
   pthread_mutex_destroy(&waitForRender);
 }
 
-int main() {
-
-  //std::cout<<"Hello World"<<std::endl;
-  
-  // seed the random number generator
-  srand(time(0));
-
+void loadSprites() {
   // load the texture for PacMan
   pacManTex.loadFromFile("./Resources/Images/player.png");
   pacManSprite.setTexture(pacManTex);
   // assign the PacMan sprite the correct texture
   pacManSprite.setTextureRect(sf::IntRect(16,0,16,16));
-  
+
   // load the texture for the Death Animation of the PacMan
   pacManDeathTex.loadFromFile("./Resources/Images/PacmanDeath16.png");
   pacManDeathSprite.setTexture(pacManDeathTex);
@@ -518,10 +630,33 @@ int main() {
   // assign the Ghost Sprite the correct texture
   ghostSprite1.setTextureRect(sf::IntRect(0,0,16,16));
   
+  // load the texture for the power pellets
+  powerPelletTex.loadFromFile("./Resources/Images/Map16.png");
+  for(int i = 0; i < numOfPowerPellets; ++i) {
+    powerPelletSprite[i].setTexture(powerPelletTex);
+    // assign the Power Pellet Sprite the correct Texture
+    powerPelletSprite[i].setTextureRect(sf::IntRect(16,16,16,16));
+    powerPelletSprite[i].setPosition(-10, -10);
+  }
+
   // initialize the rectangle blocks that make up the wall
   rectangle.setSize(sf::Vector2f (16, 16));
   rectangle.setOutlineThickness(0);
   rectangle.setFillColor(sf::Color::Blue);
+}
+
+int main() {
+
+  //std::cout<<"Hello World"<<std::endl;
+  
+  // seed the random number generator
+  srand(time(0));
+
+
+  loadSprites();
+
+
+
   
   pthread_mutex_init(&waitForGameEngine, NULL);
   pthread_mutex_lock(&waitForGameEngine);
