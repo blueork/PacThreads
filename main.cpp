@@ -1,9 +1,5 @@
 // Current Task
-// Adjust the movement of ghost
-// Remove redundant code
-// Add instructions menu
-// Add go back to main menu functionality during game
-// Fix rest of the menus as well
+// Finalize everything
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
@@ -20,7 +16,7 @@
 
 const int numOfPowerPellets = 4;
 const int numOfGhosts = 4;
-const int coins = 120;
+const int coins = 120;  //120;
 
 // Declare all the Global Variables here for the all the threads to access
 std::atomic<bool> exit_thread_flag{false}, gameWon{false}, gameOver{false}, pauseGame{false};
@@ -36,11 +32,11 @@ sf::Sprite pacManLifeSprite, mainMenuSprite, ghostHouseSprite, coinSprite;
 
 sf::SoundBuffer pacManDeathSoundBuffer, pacManEatGhostSoundBuffer, pacManChompSoundBuffer, pacManStartSoundBuffer;
 
-//pthread_mutex_t waitForRender, waitForPacMan, waitForGameEngine, waitForInput, waitForDraw;
-// pthread_mutex_t waitForGhost[numOfGhosts], waitForGameEngine1[numOfGhosts],
 pthread_mutex_t powerPellet, consumeBoost, permitCheck, pthread_mutex, checkGhostHouseGateAccess;
 sem_t waitForInput, waitForPacMan, waitForGameEngine, waitForDraw, waitForRender;
 sem_t waitForGhost[numOfGhosts], waitForGameEngine1[numOfGhosts];
+sem_t ghostMutex, mazeAccess; // semaphores used to address the Reader/Writer 
+                              // scenario in the context of the PacMan and the Ghosts
 
 int numOfPermits, numOfKeys, direction, lives, currentPowerPellets, numOfBoosts, coinsPickedUp, currScore;
 bool powerUp = false, ghostHouseGateAccess = true;
@@ -50,14 +46,13 @@ int readCount = 0;      // keeps track of the number of ghosts reading the maze 
 // appearing as blue and white when the pacman eats a power up
 bool initialState = true, blueGhostOnly = true;
 
-sem_t ghostMutex, mazeAccess; // semaphores used to address the Reader/Writer 
-                              // scenario in the context of the PacMan and the Ghosts
-
+// the spawn positions for the power pellets
 int powerPelletLoc[numOfPowerPellets][2] = { {cellSize,cellSize},
                                              {26*cellSize,cellSize},
                                              {cellSize,25*cellSize},
                                              {26*cellSize,25*cellSize} };
 
+// the spawn positions for the ghosts
 int ghostStartingLoc[numOfGhosts][2] = {{12*cellSize,12*cellSize},
                                         {12*cellSize,14*cellSize},
                                         {15*cellSize,12*cellSize},
@@ -66,7 +61,7 @@ int ghostStartingLoc[numOfGhosts][2] = {{12*cellSize,12*cellSize},
 // the underlying 2D Maze
 int maze[height][width] = {
   {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-  {1,0,4,4,4,4,4,4,4,4,4,4,4,1,1,4,4,4,4,4,4,4,4,4,4,4,0,1},  //12 + 12
+  {1,0,4,4,4,4,4,4,4,4,4,4,4,1,1,4,4,4,4,4,4,4,4,4,4,4,0,1},  
   {1,4,1,1,0,1,1,0,1,1,1,1,0,1,1,0,1,1,1,1,0,1,1,0,1,1,4,1},
   {1,4,1,1,0,1,1,0,1,1,1,1,0,1,1,0,1,1,1,1,0,1,1,0,1,1,4,1},
   {1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,1},
@@ -76,11 +71,11 @@ int maze[height][width] = {
   {1,4,0,0,0,0,0,1,4,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,1,4,1},
   {1,4,1,1,1,0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,0,0,1,0,1,4,1},
   {1,4,1,1,1,0,0,1,4,1,0,3,3,3,3,3,3,0,1,4,1,0,0,1,1,1,4,1},
-  {1,4,4,4,4,0,0,1,4,1,0,1,2,2,2,2,1,0,1,4,1,0,0,4,4,4,4,1}, // 4 + 4
+  {1,4,4,4,4,0,0,1,4,1,0,1,2,2,2,2,1,0,1,4,1,0,0,4,4,4,4,1}, 
   {1,1,1,1,1,0,0,1,4,1,0,1,0,0,0,0,1,0,1,4,1,0,0,1,1,1,1,1},
   {0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0},
   {1,1,1,1,1,0,0,1,0,0,0,1,0,0,0,0,1,0,0,0,1,0,0,1,1,1,1,1},
-  {1,4,4,4,4,0,0,1,0,0,0,1,1,1,1,1,1,0,0,0,1,0,0,4,4,4,4,1},  // 4 + 4
+  {1,4,4,4,4,0,0,1,0,0,0,1,1,1,1,1,1,0,0,0,1,0,0,4,4,4,4,1},  
   {1,4,1,1,1,0,0,1,4,4,4,0,0,0,0,0,0,0,0,0,1,0,0,1,1,1,4,1},
   {1,4,1,1,1,0,0,1,1,1,4,0,0,0,0,0,0,0,1,1,1,0,0,1,0,1,4,1},
   {1,4,0,0,0,0,0,1,4,4,4,0,0,0,0,0,0,0,0,0,1,0,0,1,1,1,4,1},
@@ -90,7 +85,7 @@ int maze[height][width] = {
   {1,4,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,4,1},
   {1,4,1,1,1,1,0,1,1,4,1,1,0,1,1,0,1,1,4,1,1,0,1,1,1,1,4,1},
   {1,4,1,1,1,1,0,1,1,4,1,1,0,1,1,0,1,1,4,1,1,0,1,1,1,1,4,1},
-  {1,0,4,4,4,4,4,4,4,4,4,4,4,1,1,4,4,4,4,4,4,4,4,4,4,4,0,1}, //12 + 12
+  {1,0,4,4,4,4,4,4,4,4,4,4,4,1,1,4,4,4,4,4,4,4,4,4,4,4,0,1}, 
   {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1} };  
 
 // class to hold info about a ghost, used primarily for 
@@ -154,7 +149,11 @@ void* ghost(void* anything) {
   
   // set the initial starting position
   ghostSprite[ghostNum].setPosition(ghostStartingLoc[ghostNum][0],ghostStartingLoc[ghostNum][1]);
-  
+  ghostSprite[ghostNum].setTexture(ghostTex[ghostNum]);
+  // assign the Ghost Sprite the correct texture
+  ghostSprite[ghostNum].setTextureRect(sf::IntRect(0,0,16,16));
+  ghostSprite[ghostNum].setScale(1.5,1.5); 
+
   int numOfMoves = 0, direction = 0, xPos, yPos, ghostSpriteFrame = 0;
   sf::Vector2f currPos;
 
@@ -165,6 +164,7 @@ void* ghost(void* anything) {
   int blueGhostSpriteFrame = 0;
   
   sf::Clock startDelay, permitDelay;
+
 
   while(!exit_thread_flag) {
     
@@ -257,12 +257,33 @@ void* ghost(void* anything) {
       if(numOfMoves > 0 && hasBoost == true)
         --numOfMoves;
 
+      // set the relevant textures for the Ghost Sprite
+      // when the pacman eats a power pellet use the blue ghost tex
+      if(initialState == false && check == false) {
+        ghostSprite[ghostNum].setTexture(blueGhosts);
+        check = true;
+      }
+      // return back to the normal ghost textures
+      else if(initialState == true && check == true) {
+        ghostSprite[ghostNum].setTexture(ghostTex[ghostNum]);
+        check = false;
+      }
+      // set the relevant blue ghost sprites for the Ghost Sprite 
+      // when pacman still has the boost 
+      if(initialState == false) {
+        ghostSprite[ghostNum].setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
+        if(blueGhostOnly) 
+          blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
+        else
+          blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
+      }
+
       // get the current position of the ghost
       currPos = ghostSprite[ghostNum].getPosition();
       // translate the coordinates with respect to the set cell size in the gird
       xPos = (currPos.x/cellSize); 
       yPos = (currPos.y/cellSize);
-        
+          
       sem_wait(&ghostMutex);
       // increment the number of ghosts accessing the maze for read
       ++readCount;
@@ -272,24 +293,6 @@ void* ghost(void* anything) {
         sem_wait(&mazeAccess);
       sem_post(&ghostMutex);
         
-      // set the relevant textures for the Ghost Sprite
-      if(initialState == false && check == false) {
-        ghostSprite[ghostNum].setTexture(blueGhosts);
-        check = true;
-      }
-      else if(initialState == true && check == true) {
-        ghostSprite[ghostNum].setTexture(ghostTex[ghostNum]);
-        check = false;
-      }
-      // set the relevant sprites for the Ghost Sprite
-      if(initialState == false) {
-        ghostSprite[ghostNum].setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-        if(blueGhostOnly) 
-          blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-        else
-          blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
-      }
-      
       if(direction == 1 || direction == 6) {
       
         if(maze[yPos-1][xPos] != 1 && (maze[yPos-1][xPos] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))   ) {
@@ -796,7 +799,7 @@ void* pacMan(void* anything) {
   int iter = 0;
 
   // To keep track of the time for the effect of the Power Pellet
-  sf::Clock powerUpClock, initialDelayClock;
+  sf::Clock powerUpClock; //, initialDelayClock;
 
   while(!exit_thread_flag) {
     
@@ -947,6 +950,7 @@ void* pacMan(void* anything) {
   pthread_exit(NULL);
 }
 
+// function for animating the pacman death 
 void collisionAnimation() {
 
   sf::Sound pacManDeathSound;
@@ -993,6 +997,7 @@ void collisionAnimation() {
 
 void* gameEngine(void* anything) {
   
+  // initialize semaphores, mutexes and lock them according to game logic
   sem_init(&ghostMutex, 0, 1);
   sem_init(&mazeAccess, 0, 1);
 
@@ -1011,6 +1016,14 @@ void* gameEngine(void* anything) {
   pthread_mutex_init(&consumeBoost, NULL);
   pthread_mutex_init(&permitCheck, NULL);
   pthread_mutex_init(&checkGhostHouseGateAccess, NULL);
+
+  // set the correct texture for each ghost sprite
+  // for(int i = 0; i < numOfGhosts; ++i) {
+  //   ghostSprite[i].setTexture(ghostTex[i]);
+  //   // assign the Ghost Sprite the correct texture
+  //   ghostSprite[i].setTextureRect(sf::IntRect(0,0,16,16));
+  //   ghostSprite[i].setScale(1.5,1.5);
+  // }
 
   // initialize thread attributes
   pthread_attr_t attr;
@@ -1281,12 +1294,12 @@ void loadSprites() {
   ghostTex[3].loadFromFile("./Resources/Images/pinky.png");
   
   // set the sprites of the Ghosts accordingly
-  for(int i = 0; i < numOfGhosts; ++i) {
-    ghostSprite[i].setTexture(ghostTex[i]);
-    // assign the Ghost Sprite the correct texture
-    ghostSprite[i].setTextureRect(sf::IntRect(0,0,16,16));
-    ghostSprite[i].setScale(1.5,1.5);
-  }
+  // for(int i = 0; i < numOfGhosts; ++i) {
+  //   ghostSprite[i].setTexture(ghostTex[i]);
+  //   // assign the Ghost Sprite the correct texture
+  //   ghostSprite[i].setTextureRect(sf::IntRect(0,0,16,16));
+  //   ghostSprite[i].setScale(1.5,1.5);
+  // }
   blueGhosts.loadFromFile("./Resources/Images/blueGhosts.png");
 
   // load the texture for the power pellets
@@ -1339,7 +1352,8 @@ void initDefault() {
   powerUp = false;
   readCount = 0;
   coinsPickedUp = currScore = 0;
-  
+  initialState = blueGhostOnly = true;
+
   for(int i = 0; i < numOfPowerPellets; ++i)
     powerPelletSprite[i].setPosition(-20, -20);
   
@@ -1368,7 +1382,6 @@ void mainUserInterface() {
   mainMenuSprite.setTexture(mainMenuTex);
   mainMenuSprite.setScale(sf::Vector2f(0.68,0.72));
   gameOverMenuSprite.setTexture(gameOverMenuTex);
-  //gameOverSprite.setScale(0.8, 1.4);
 
   loadSprites();
   loadSounds();
@@ -1387,19 +1400,7 @@ void mainUserInterface() {
     mainMenuOptions[i].setFont(pacFont);
     mainMenuOptions[i].setCharacterSize(45);
     mainMenuOptions[i].setFillColor(sf::Color::Red);
-  
-    // gameWonOptions[i].setFont(pacFont);
-    // gameWonOptions[i].setCharacterSize(45);
-    // gameWonOptions[i].setFillColor(sf::Color::Red);
-  
-    // gameOverOptions[i].setFont(pacFont);
-    // gameOverOptions[i].setCharacterSize(45);
-    // gameOverOptions[i].setFillColor(sf::Color::Red);
   }
-
-  // gameWonOptions[0].setFont(pacFont);
-  // gameWonOptions[0].setCharacterSize(45);
-  // gameWonOptions[0].setFillColor(sf::Color::Red);
  
   mainMenuOptions[0].setString("PacThreads");
   mainMenuOptions[0].setPosition(100, 180);
@@ -1440,13 +1441,6 @@ void mainUserInterface() {
   gameWonMessage.setPosition(10, 30);
   gameWonMessage.setCharacterSize(65); 
 
-  // gameWonOptions[1].setString("Play Again");
-  // gameWonOptions[1].setPosition(160, 350);
-  // gameWonOptions[2].setString("Go Back to Main Menu");
-  // gameWonOptions[2].setPosition(110, 350 + 80*1);
-  // gameWonOptions[3].setString("Exit");
-  // gameWonOptions[3].setPosition(270, 350 + 80*2);
-
   for(int i = 0; i < 6; ++i) {
     gameOverOptions[i].setFont(pacFont);
     gameOverOptions[i].setCharacterSize(45);
@@ -1470,15 +1464,13 @@ void mainUserInterface() {
   window.create(sf::VideoMode(width*cellSize, (height+3)*cellSize), "Pac-Man");
   
 // 648 744
-
-  // displayMainMenu = false;
-  // gameWon = true;
+  sf::Event event;
 
   while(window.isOpen()){
 
     // loop to display the main menu and relevant functionality
     while(displayMainMenu) {
-      sf::Event event;
+      // sf::Event event;
 
       window.clear(sf::Color::Black);
   
@@ -1512,7 +1504,7 @@ void mainUserInterface() {
     }
 
     while(instructionMenu) {
-      sf::Event event;
+      // sf::Event event;
 
       window.clear(sf::Color::Black);
   
@@ -1578,7 +1570,7 @@ void mainUserInterface() {
       // Value set in the UI Thread and Accessed by the PacMan Thread
       int localDirection = 0;
       // to check for user inputs
-      sf::Event event;
+      // sf::Event event;
 
       // this while loop below acts as the user interface thread
       while(!exit_thread_flag) {
@@ -1733,7 +1725,7 @@ void mainUserInterface() {
 
       window.display();
 
-      sf::Event event;
+      // sf::Event event;
       while(window.pollEvent(event)) {
         if(event.type == sf::Event::Closed) {
           window.close();
@@ -1771,7 +1763,7 @@ void mainUserInterface() {
 
       window.display();
 
-      sf::Event event;
+      // sf::Event event;
       while(window.pollEvent(event)) {
         if(event.type == sf::Event::Closed) {
           window.close();
@@ -1796,10 +1788,7 @@ void mainUserInterface() {
         }
       }
     }
-
-
   }
-  
 }
 
 
@@ -1811,8 +1800,6 @@ int main() {
   srand(time(0));
 
   mainUserInterface();
-  
- // pthread_exit(NULL);
-  
+    
   return 0;
 }
