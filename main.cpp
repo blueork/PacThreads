@@ -1,5 +1,5 @@
 // Current Task
-// Consider that the Ghost House Gate is a shared resource
+// Fix the Starting Position of the Pacman and add delay
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
@@ -791,7 +791,7 @@ void* pacMan(void* anything) {
   pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
   // set the initial starting position
-  pacManSprite.setPosition(cellSize*2,cellSize);
+  pacManSprite.setPosition(cellSize*13,cellSize*16);
   // set the initial sprite
   pacManSprite.setTextureRect(sf::IntRect(16,16,16,16));
 
@@ -800,10 +800,13 @@ void* pacMan(void* anything) {
   sf::Vector2f currPos;
   
   // To keep track of the time for the effect of the Power Pellet
-  sf::Clock powerUpClock;
+  sf::Clock powerUpClock, initialDelayClock;
 
   while(!exit_thread_flag) {
 
+    // if(initialDelayClock.getElapsedTime().asSeconds() < 2 && !exit_thread_flag) 
+    //   continue;
+    
     if(pauseGame)
       continue;
 
