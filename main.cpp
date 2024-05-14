@@ -1,5 +1,8 @@
 // Current Task
-// Add Sound effects
+// Add Coins
+// Add more walls
+// Make the Grid Design Better
+// Adjust the Main Menu
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
@@ -16,7 +19,7 @@
 
 const int numOfPowerPellets = 4;
 const int numOfGhosts = 4;
-const int coins = 7;
+const int coins = 120;
 
 // Declare all the Global Variables here for the all the threads to access
 std::atomic<bool> exit_thread_flag{false}, gameWon{false}, gameOver{false}, pauseGame{false};
@@ -25,7 +28,7 @@ sf::RenderWindow window;
 sf::RectangleShape rectangle;
 
 sf::Texture pacManTex, pacManDeathTex, powerPelletTex, ghostTex[numOfGhosts], blueGhosts, coinTex;
-sf::Texture mainMenuTex, rectTex;
+sf::Texture rectTex;
 
 sf::Sprite pacManSprite,pacManDeathSprite, powerPelletSprite[numOfPowerPellets], ghostSprite[numOfGhosts];
 sf::Sprite pacManLifeSprite, mainMenuSprite, ghostHouseSprite, coinSprite;
@@ -62,31 +65,31 @@ int ghostStartingLoc[numOfGhosts][2] = {{12*cellSize,12*cellSize},
 // the underlying 2D Maze
 int maze[height][width] = {
   {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0,1,1,1,0,0,1},
-  {1,0,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0,1,1,1,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1},
-  {1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1},
-  {1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1},
-  {1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1},
-  {1,0,0,1,1,0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,0,0,1,1,0,0,1},
-  {1,0,0,0,0,0,0,1,0,0,0,3,3,3,3,3,3,0,0,0,1,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,1,0,0,0,1,2,2,2,2,1,0,0,0,1,0,0,0,0,0,0,1},
+  {1,0,4,4,4,4,4,4,4,4,4,4,4,1,1,4,4,4,4,4,4,4,4,4,4,4,0,1},  //12 + 12
+  {1,4,1,1,0,1,1,0,1,1,1,1,0,1,1,0,1,1,1,1,0,1,1,0,1,1,4,1},
+  {1,4,1,1,0,1,1,0,1,1,1,1,0,1,1,0,1,1,1,1,0,1,1,0,1,1,4,1},
+  {1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,1},
+  {1,4,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,4,1},
+  {1,4,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,4,1},
+  {1,4,1,1,1,0,0,1,4,1,1,1,4,4,1,1,1,4,4,4,1,0,0,0,0,0,4,1},
+  {1,4,0,0,0,0,0,1,4,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,1,4,1},
+  {1,4,1,1,1,0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,0,0,1,0,1,4,1},
+  {1,4,1,1,1,0,0,1,4,1,0,3,3,3,3,3,3,0,1,4,1,0,0,1,1,1,4,1},
+  {1,4,4,4,4,0,0,1,4,1,0,1,2,2,2,2,1,0,1,4,1,0,0,4,4,4,4,1}, // 4 + 4
+  {1,1,1,1,1,0,0,1,4,1,0,1,0,0,0,0,1,0,1,4,1,0,0,1,1,1,1,1},
+  {0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0},
   {1,1,1,1,1,0,0,1,0,0,0,1,0,0,0,0,1,0,0,0,1,0,0,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0},
-  {1,1,1,1,1,0,0,1,0,0,0,1,0,0,0,0,1,0,0,0,1,0,0,1,1,1,1,1},
-  {1,0,0,0,0,0,0,1,0,0,0,1,1,1,1,1,1,0,0,0,1,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,1,4,4,4,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1},
-  {1,0,0,1,1,0,0,1,1,1,4,0,0,0,0,0,0,0,1,1,1,0,0,1,1,0,0,1},
-  {1,0,0,1,1,0,0,1,4,4,4,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1},
-  {1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1},
-  {1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1},
-  {1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0,1,1,1,0,0,1},
-  {1,0,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0,1,1,1,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,4,4,4,4,0,0,1,0,0,0,1,1,1,1,1,1,0,0,0,1,0,0,4,4,4,4,1},  // 4 + 4
+  {1,4,1,1,1,0,0,1,4,4,4,0,0,0,0,0,0,0,0,0,1,0,0,1,1,1,4,1},
+  {1,4,1,1,1,0,0,1,1,1,4,0,0,0,0,0,0,0,1,1,1,0,0,1,0,1,4,1},
+  {1,4,0,0,0,0,0,1,4,4,4,0,0,0,0,0,0,0,0,0,1,0,0,1,1,1,4,1},
+  {1,4,1,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,4,1},
+  {1,4,1,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,1,4,1},
+  {1,4,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,4,1},
+  {1,4,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,4,1},
+  {1,4,1,1,1,1,0,1,1,4,1,1,0,1,1,0,1,1,4,1,1,0,1,1,1,1,4,1},
+  {1,4,1,1,1,1,0,1,1,4,1,1,0,1,1,0,1,1,4,1,1,0,1,1,1,1,4,1},
+  {1,0,4,4,4,4,4,4,4,4,4,4,4,1,1,4,4,4,4,4,4,4,4,4,4,4,0,1}, //12 + 12
   {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1} };  
 
 // class to hold info about a ghost, used primarily for 
@@ -837,7 +840,7 @@ void* pacMan(void* anything) {
           }
           if(maze[yPos-1][xPos] == 4) {
             ++coinsPickedUp;
-            maze[yPos-1][xPos] = 0;
+            maze[yPos-1][xPos] = -1;
             currScore += 10;
           }
           pacManSprite.move(0, -cellSize);
@@ -860,7 +863,7 @@ void* pacMan(void* anything) {
           }
           if(maze[yPos+1][xPos] == 4) {
             ++coinsPickedUp;
-            maze[yPos+1][xPos] = 0;
+            maze[yPos+1][xPos] = -1;
             currScore += 10;
           }
           pacManSprite.move(0, cellSize);
@@ -883,8 +886,8 @@ void* pacMan(void* anything) {
           }
           if(maze[yPos][xPos-1] == 4) {
             ++coinsPickedUp;
-            maze[yPos][xPos-1] = 0;
-            
+            maze[yPos][xPos-1] = -1;
+            currScore += 10;
           }          
           pacManSprite.move(-cellSize, 0);
           pacManSprite.setTextureRect(sf::IntRect(16*spriteFrame,32,16,16));
@@ -906,7 +909,7 @@ void* pacMan(void* anything) {
           }
           if(maze[yPos][xPos+1] == 4) {
             ++coinsPickedUp;
-            maze[yPos][xPos+1] = 0;
+            maze[yPos][xPos+1] = -1;
             currScore += 10;
           }          
           pacManSprite.move(cellSize, 0);
@@ -1176,6 +1179,8 @@ void* gameEngine(void* anything) {
       gameWon = true;
       exit_thread_flag = true;
       restart = true;
+      delayClock.restart();
+      while(delayClock.getElapsedTime().asSeconds() > 0.1) {};
     }
 
     // check for collision in-between PacMan and Ghost
@@ -1241,7 +1246,7 @@ void* gameEngine(void* anything) {
 
   pacManEatGhostSound.stop();
   pacManStartSound.stop();
-  
+
   // destroy thread attributes
   pthread_attr_destroy(&attr);
   
@@ -1338,9 +1343,8 @@ void loadSprites() {
   rectTex.loadFromFile("./Resources/Images/19f75f2bf6e184ef14e6f5c3a5b1aa47.jpg");
   rectangle.setTexture(&rectTex);
 
-  mainMenuTex.loadFromFile("./Resources/Images/peakpx2.jpg");
-  mainMenuSprite.setTexture(mainMenuTex);
-  mainMenuSprite.setScale(sf::Vector2f(0.68,0.72));
+  
+
 }
 
 void loadSounds() {
@@ -1369,32 +1373,50 @@ void initDefault() {
   initialState = true;
   blueGhostOnly = true;
 
+  for(int i = 0; i < height; ++i) {
+    for(int j = 0; j < width; ++j) {
+      if(maze[i][j] == -1)
+        maze[i][j] = 4;
+    }
+  }
+
 }
 
 void mainUserInterface() {
 
   bool displayMainMenu = true, gameStart = false;
   
+  sf::Texture mainMenuTex, gameOverMenuTex;
+  mainMenuTex.loadFromFile("./Resources/Images/peakpx2.jpg");
+  gameOverMenuTex.loadFromFile("./Resources/Images/gameOverBG.jpg");
+  
+  sf::Sprite mainMenuSprite, gameOverMenuSprite;
+  mainMenuSprite.setTexture(mainMenuTex);
+  mainMenuSprite.setScale(sf::Vector2f(0.68,0.72));
+  gameOverMenuSprite.setTexture(gameOverMenuTex);
+//  gameOverSprite.setScale(0.8, 1.4);
+
   loadSprites();
   loadSounds();
 
-  sf::Text mainMenuOptions[3], gameWonOptions[4], gameOverOptions[4], scoreDisplay;
-  sf::Font pacFont;
+  sf::Text mainMenuOptions[4], gameWonOptions[4], gameOverOptions[4], scoreDisplay;
+  sf::Font pacFont, cupHeadFont;
   pacFont.loadFromFile("./Resources/Fonts/PacfontGood-yYye.ttf");
-  
-  scoreDisplay.setFont(pacFont);
-  scoreDisplay.setCharacterSize(20);
-  scoreDisplay.setFillColor(sf::Color::White);
-  scoreDisplay.setPosition((width-4)*cellSize, (height+1)*cellSize);
+  cupHeadFont.loadFromFile("./Resources/Fonts/cuphead.ttf");
 
-  for(int i = 0; i < 3; ++i) {
+  scoreDisplay.setFont(cupHeadFont);
+  scoreDisplay.setCharacterSize(30);
+  scoreDisplay.setFillColor(sf::Color::White);
+  scoreDisplay.setPosition((width-5)*cellSize, (height)*cellSize);
+
+  for(int i = 0; i < 4; ++i) {
     mainMenuOptions[i].setFont(pacFont);
     mainMenuOptions[i].setCharacterSize(45);
     mainMenuOptions[i].setFillColor(sf::Color::Red);
     
-    gameWonOptions[i+1].setFont(pacFont);
-    gameWonOptions[i+1].setCharacterSize(45);
-    gameWonOptions[i+1].setFillColor(sf::Color::Red);
+    gameWonOptions[i].setFont(pacFont);
+    gameWonOptions[i].setCharacterSize(45);
+    gameWonOptions[i].setFillColor(sf::Color::Red);
   
     gameOverOptions[i+1].setFont(pacFont);
     gameOverOptions[i+1].setCharacterSize(45);
@@ -1402,15 +1424,18 @@ void mainUserInterface() {
   }
 
   gameWonOptions[0].setFont(pacFont);
-  gameWonOptions[0].setCharacterSize(55);
+  gameWonOptions[0].setCharacterSize(45);
   gameWonOptions[0].setFillColor(sf::Color::Red);
-  
-  mainMenuOptions[0].setString("Start New Game");
-  mainMenuOptions[0].setPosition(110, 350);
-  mainMenuOptions[1].setString("Instructions");
-  mainMenuOptions[1].setPosition(160, 350 + 80*1);
-  mainMenuOptions[2].setString("Exit");
-  mainMenuOptions[2].setPosition(270, 350 + 80*2);
+ 
+  mainMenuOptions[0].setString("PacThreads");
+  mainMenuOptions[0].setPosition(100, 180);
+  mainMenuOptions[0].setCharacterSize(65);
+  mainMenuOptions[1].setString("Start New Game");
+  mainMenuOptions[1].setPosition(110, 350);
+  mainMenuOptions[2].setString("Instructions");
+  mainMenuOptions[2].setPosition(160, 350 + 80*1);
+  mainMenuOptions[3].setString("Exit");
+  mainMenuOptions[3].setPosition(270, 350 + 80*2);
   
   gameWonOptions[0].setString("You have Won !!");
   gameWonOptions[0].setPosition(110, 200); 
@@ -1424,20 +1449,16 @@ void mainUserInterface() {
   gameOverOptions[0].setString("You have Lost !!");
   gameOverOptions[0].setPosition(110, 200); 
   gameOverOptions[1].setString("Play Again");
-  gameOverOptions[1].setPosition(160, 350);
+  gameOverOptions[1].setPosition(165, 430);
   gameOverOptions[2].setString("Go Back to Main Menu");
-  gameOverOptions[2].setPosition(110, 350 + 80*1);
+  gameOverOptions[2].setPosition(35, 430 + 80*1);
   gameOverOptions[3].setString("Exit");
-  gameOverOptions[3].setPosition(270, 350 + 80*2);
-
-  // for(int i = 0; i < 3; ++i) {
-    
-    
-  //   gameWonOptions[i].setPosition(140, 200 + 50*i);
-  // }
+  gameOverOptions[3].setPosition(270, 430 + 80*2);
 
   window.create(sf::VideoMode(width*cellSize, (height+3)*cellSize), "Pac-Man");
   
+// 648 744
+
   while(window.isOpen()){
 
     // loop to display the main menu and relevant functionality
@@ -1447,7 +1468,7 @@ void mainUserInterface() {
       window.clear(sf::Color::Black);
   
       window.draw(mainMenuSprite);
-      for(int i = 0; i < 3; ++i)
+      for(int i = 0; i < 4; ++i)
         window.draw(mainMenuOptions[i]);
       
       window.display();
@@ -1459,35 +1480,18 @@ void mainUserInterface() {
         }
         if(event.type== sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
           
-          if(mainMenuOptions[0].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
+          if(mainMenuOptions[1].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
             displayMainMenu = false;
             gameStart = true;
           }
-          else if(mainMenuOptions[1].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
+          else if(mainMenuOptions[2].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
             s::cout<<"Nothing Here\n";
           }
-          else if(mainMenuOptions[2].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
+          else if(mainMenuOptions[3].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
             displayMainMenu = false;
             window.close();
           }
-        }
-        // if(menu.type == sf::Event::KeyPressed) {
-        //   if(menu.key.code == sf::Keyboard::Num1) {
-        //     displayMainMenu = false;
-        //     gameStart = true;
-        //     //s::cout<<"1 Pressed\n";
-        //   }
-        //   else if(menu.key.code == sf::Keyboard::Num2) {
-        //     s::cout<<"2 Pressed\n";
-        //   }
-        //   else if(menu.key.code == sf::Keyboard::Num3) { 
-        //     s::cout<<"3 Pressed\nExiting the Game\n";
-            
-            
-        //     displayMainMenu = false;
-        //     window.close();
-        //   }
-        // }      
+        }      
       }
     }
 
@@ -1567,6 +1571,13 @@ void mainUserInterface() {
               exit_thread_flag = true;
               gameStart = true;
               resetGame = true;
+            }
+            else if(event.key.code == sf::Keyboard::E) {
+              window.close();
+              sem_post(&waitForInput);
+              sem_post(&waitForDraw);
+              gameStart = false;
+              exit_thread_flag = true; 
             }
           }
         }
@@ -1715,7 +1726,7 @@ void mainUserInterface() {
 
       window.clear(sf::Color::Black);
 
-      //window.draw(mainMenuSprite);
+      window.draw(gameOverMenuSprite);
       for(int i = 0; i < 4; ++i) 
         window.draw(gameOverOptions[i]);  
 
