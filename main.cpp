@@ -1,19 +1,5 @@
 // Current Task
-// Increase the Window Size
-// Adjust the Grid Cell Size Accordingly
-// Add lives sprite
-// Add Coins
-// Add score and score counter
-// Game end when all the coins have been consumed
-// Game end screen accordingly
-// Game end screen should show reset or back back to main menu
-// Game Over
-// Game over screen accordingly
-// Game over screen should show reset or go back to main menu
-// Pause Screen and relevant functionality
-
-// Revaluate the Game
-// Remove Redundant Code
+// Take mouse based input in all menus
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
@@ -41,7 +27,7 @@ sf::RenderWindow window;
 sf::RectangleShape rectangle;
 
 sf::Texture pacManTex, pacManDeathTex, powerPelletTex, ghostTex[numOfGhosts], blueGhosts, coinTex;
-sf::Texture mainMenuTex;
+sf::Texture mainMenuTex, rectTex;
 
 sf::Sprite pacManSprite,pacManDeathSprite, powerPelletSprite[numOfPowerPellets], ghostSprite[numOfGhosts];
 sf::Sprite pacManLifeSprite, mainMenuSprite, ghostHouseSprite, coinSprite;
@@ -63,13 +49,13 @@ sem_t ghostMutex, mazeAccess; // semaphores used to address the Reader/Writer
 
 int powerPelletLoc[numOfPowerPellets][2] = { {cellSize,cellSize},
                                              {26*cellSize,cellSize},
-                                             {cellSize,29*cellSize},
-                                             {26*cellSize,29*cellSize} };
+                                             {cellSize,25*cellSize},
+                                             {26*cellSize,25*cellSize} };
 
-int ghostStartingLoc[numOfGhosts][2] = {{12*cellSize,14*cellSize},
-                                        {12*cellSize,16*cellSize},
-                                        {15*cellSize,14*cellSize},
-                                        {15*cellSize,16*cellSize} };                                             
+int ghostStartingLoc[numOfGhosts][2] = {{12*cellSize,12*cellSize},
+                                        {12*cellSize,14*cellSize},
+                                        {15*cellSize,12*cellSize},
+                                        {15*cellSize,14*cellSize} };                                             
 
 // the underlying 2D Maze
 int maze[height][width] = {
@@ -837,7 +823,7 @@ void* pacMan(void* anything) {
           if(powerPelletSprite[i].getPosition() == pacManSprite.getPosition()) {
             
             // reset the power pellet position after consuming it
-            powerPelletSprite[i].setPosition(-10, -10);
+            powerPelletSprite[i].setPosition(-20, -20);
             // s::cout<<"Power Pellet Acquired\n";        
             // consume the power pellet
             powerUp = true;
@@ -898,9 +884,9 @@ void collisionAnimation() {
   }
   // reset the relevant values
   direction = -1;
-  pacManSprite.setPosition(-10,-10);
+  pacManSprite.setPosition(-20,-20);
   for(int i = 0; i < numOfGhosts; ++i)
-    ghostSprite[i].setPosition(-10,-10);
+    ghostSprite[i].setPosition(-20,-0);
 }
 
 void* gameEngine(void* anything) {
@@ -954,7 +940,7 @@ void* gameEngine(void* anything) {
 
   // clocks for adding delay and generating power pellets
   sf::Clock delayClock, powerPelletGeneratorTimer, blueGhostTimer1, blueGhostTimer2;
-  sf::Vector2f pacManPos, ghostPos, temp(-10,-10);
+  sf::Vector2f pacManPos, ghostPos, temp(-20,-20);
 
   bool restart = false, ghostDead = false, blueGhostSprite = false;
   int powerPelletPos = 0;     // points to the first power pellet that has to be created 
@@ -1205,13 +1191,13 @@ void loadSprites() {
     powerPelletSprite[i].setTexture(powerPelletTex);
     // assign the Power Pellet Sprite the correct Texture
     powerPelletSprite[i].setTextureRect(sf::IntRect(16,16,16,16));
-    powerPelletSprite[i].setPosition(-10, -10);
+    powerPelletSprite[i].setPosition(-20, -20);
     powerPelletSprite[i].setScale(1.5, 1.5);
   }
 
-  //
+  // load the texture for the coins
   coinSprite.setTexture(powerPelletTex);
-  // 
+  // assign the correct texture
   coinSprite.setTextureRect(sf::IntRect(0,16,16,16));
   coinSprite.setScale(1.5, 1.5);
 
@@ -1224,6 +1210,9 @@ void loadSprites() {
   rectangle.setSize(sf::Vector2f (24, 24));
   rectangle.setOutlineThickness(0);
   rectangle.setFillColor(sf::Color::Blue);
+  // give the walls a texture  
+  rectTex.loadFromFile("./Resources/Images/19f75f2bf6e184ef14e6f5c3a5b1aa47.jpg");
+  rectangle.setTexture(&rectTex);
 
   mainMenuTex.loadFromFile("./Resources/Images/peakpx2.jpg");
   mainMenuSprite.setTexture(mainMenuTex);
@@ -1241,7 +1230,10 @@ void initDefault() {
   numOfBoosts = 2;
   powerUp = false;
   readCount = 0;
-  coinsPickedUp = currScore =0;
+  coinsPickedUp = currScore = 0;
+  
+  for(int i = 0; i < numOfPowerPellets; ++i)
+    powerPelletSprite[i].setPosition(-20, -20);
   
   initialState = true;
   blueGhostOnly = true;
@@ -1254,44 +1246,71 @@ void mainUserInterface() {
   
   loadSprites();
 
-  sf::Text mainMenuOptions[3], gameWonOptions[3], scoreDisplay;
-  sf::Font comicSans;
-  comicSans.loadFromFile("./Resources/Fonts/cuphead.ttf");
+  sf::Text mainMenuOptions[3], gameWonOptions[4], gameOverOptions[4], scoreDisplay;
+  sf::Font pacFont;
+  pacFont.loadFromFile("./Resources/Fonts/PacfontGood-yYye.ttf");
   
-  scoreDisplay.setFont(comicSans);
+  scoreDisplay.setFont(pacFont);
   scoreDisplay.setCharacterSize(20);
   scoreDisplay.setFillColor(sf::Color::White);
   scoreDisplay.setPosition((width-4)*cellSize, (height+1)*cellSize);
 
   for(int i = 0; i < 3; ++i) {
-    mainMenuOptions[i].setFont(comicSans);
-    mainMenuOptions[i].setCharacterSize(20);
+    mainMenuOptions[i].setFont(pacFont);
+    mainMenuOptions[i].setCharacterSize(45);
     mainMenuOptions[i].setFillColor(sf::Color::Red);
-
-    gameWonOptions[i].setFont(comicSans);
-    gameWonOptions[i].setCharacterSize(20);
-    gameWonOptions[i].setFillColor(sf::Color::Red);
-  }
-
-  mainMenuOptions[0].setString("Start A New Game");
-  mainMenuOptions[1].setString("Instructions");
-  mainMenuOptions[2].setString("Exit");
-
-  gameWonOptions[0].setString("Replay");
-  gameWonOptions[1].setString("Go Back to Main Menu");
-  gameWonOptions[2].setString("Exit");
+    
+    gameWonOptions[i+1].setFont(pacFont);
+    gameWonOptions[i+1].setCharacterSize(45);
+    gameWonOptions[i+1].setFillColor(sf::Color::Red);
   
-  for(int i = 0; i < 3; ++i) {
-    mainMenuOptions[i].setPosition(140, 200 + 50*i);
-    gameWonOptions[i].setPosition(140, 200 + 50*i);
+    gameOverOptions[i+1].setFont(pacFont);
+    gameOverOptions[i+1].setCharacterSize(45);
+    gameOverOptions[i+1].setFillColor(sf::Color::Red);
   }
+
+  gameWonOptions[0].setFont(pacFont);
+  gameWonOptions[0].setCharacterSize(55);
+  gameWonOptions[0].setFillColor(sf::Color::Red);
+  
+  mainMenuOptions[0].setString("Start New Game");
+  mainMenuOptions[0].setPosition(110, 350);
+  mainMenuOptions[1].setString("Instructions");
+  mainMenuOptions[1].setPosition(160, 350 + 80*1);
+  mainMenuOptions[2].setString("Exit");
+  mainMenuOptions[2].setPosition(270, 350 + 80*2);
+  
+  gameWonOptions[0].setString("You have Won !!");
+  gameWonOptions[0].setPosition(110, 200); 
+  gameWonOptions[1].setString("Play Again");
+  gameWonOptions[1].setPosition(160, 350);
+  gameWonOptions[2].setString("Go Back to Main Menu");
+  gameWonOptions[2].setPosition(110, 350 + 80*1);
+  gameWonOptions[3].setString("Exit");
+  gameWonOptions[3].setPosition(270, 350 + 80*2);
+
+  gameOverOptions[0].setString("You have Lost !!");
+  gameOverOptions[0].setPosition(110, 200); 
+  gameOverOptions[1].setString("Play Again");
+  gameOverOptions[1].setPosition(160, 350);
+  gameOverOptions[2].setString("Go Back to Main Menu");
+  gameOverOptions[2].setPosition(110, 350 + 80*1);
+  gameOverOptions[3].setString("Exit");
+  gameOverOptions[3].setPosition(270, 350 + 80*2);
+
+  // for(int i = 0; i < 3; ++i) {
+    
+    
+  //   gameWonOptions[i].setPosition(140, 200 + 50*i);
+  // }
 
   window.create(sf::VideoMode(width*cellSize, (height+3)*cellSize), "Pac-Man");
   
   while(window.isOpen()){
 
+    // loop to display the main menu and relevant functionality
     while(displayMainMenu) {
-      sf::Event menu;
+      sf::Event event;
 
       window.clear(sf::Color::Black);
   
@@ -1301,33 +1320,49 @@ void mainUserInterface() {
       
       window.display();
 
-      while(window.pollEvent(menu)) {
-        if(menu.type == sf::Event::Closed) {
+      while(window.pollEvent(event)) {
+        if(event.type == sf::Event::Closed) {
           displayMainMenu = false;
           window.close();
         }
-        if(menu.type == sf::Event::KeyPressed) {
-          if(menu.key.code == sf::Keyboard::Num1) {
+        if(event.type== sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+          
+          if(mainMenuOptions[0].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
             displayMainMenu = false;
             gameStart = true;
-            //s::cout<<"1 Pressed\n";
           }
-          else if(menu.key.code == sf::Keyboard::Num2) {
-            s::cout<<"2 Pressed\n";
+          else if(mainMenuOptions[1].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
+            s::cout<<"Nothing Here\n";
           }
-          else if(menu.key.code == sf::Keyboard::Num3) { 
-            s::cout<<"3 Pressed\nExiting the Game\n";
+          else if(mainMenuOptions[2].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
             displayMainMenu = false;
             window.close();
           }
-        }      
+        }
+        // if(menu.type == sf::Event::KeyPressed) {
+        //   if(menu.key.code == sf::Keyboard::Num1) {
+        //     displayMainMenu = false;
+        //     gameStart = true;
+        //     //s::cout<<"1 Pressed\n";
+        //   }
+        //   else if(menu.key.code == sf::Keyboard::Num2) {
+        //     s::cout<<"2 Pressed\n";
+        //   }
+        //   else if(menu.key.code == sf::Keyboard::Num3) { 
+        //     s::cout<<"3 Pressed\nExiting the Game\n";
+            
+            
+        //     displayMainMenu = false;
+        //     window.close();
+        //   }
+        // }      
       }
     }
 
     if(gameStart) {
 
       pauseGame = false;
-
+      bool resetGame = false;
       // initialize the global variables with the default values
       initDefault();
 
@@ -1394,8 +1429,18 @@ void mainUserInterface() {
               else
                 pauseGame = true;
             }
+            else if(event.key.code == sf::Keyboard::R) {
+              pthread_mutex_unlock(&waitForInput);
+              pthread_mutex_unlock(&waitForDraw);
+              exit_thread_flag = true;
+              gameStart = true;
+              resetGame = true;
+            }
           }
         }
+
+        if(resetGame == true)
+          break;
 
         if(pauseGame)
           continue;
@@ -1415,7 +1460,7 @@ void mainUserInterface() {
 
         if(exit_thread_flag) {
           //window.close();
-          displayMainMenu = true;
+          //displayMainMenu = true;
           gameStart = false;
           pthread_mutex_unlock(&waitForInput);
           pthread_mutex_unlock(&waitForDraw);
@@ -1480,8 +1525,8 @@ void mainUserInterface() {
 
       window.clear(sf::Color::Black);
 
-      window.draw(mainMenuSprite);
-      for(int i = 0; i < 3; ++i) 
+      //window.draw(mainMenuSprite);
+      for(int i = 0; i < 4; ++i) 
         window.draw(gameWonOptions[i]);  
 
       window.display();
@@ -1492,24 +1537,41 @@ void mainUserInterface() {
           window.close();
           gameWon = displayMainMenu = gameStart = false;         
         }        
-        if(event.type == sf::Event::KeyPressed) {           
-          // Restart
-          if(event.key.code == sf::Keyboard::Num1) {
-            gameWon = displayMainMenu = false;
+        if(event.type== sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+          // Restart  
+          if(gameWonOptions[1].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
+            gameWon = false;
             gameStart = true;
           }
-          // go back to main menu
-          else if(event.key.code == sf::Keyboard::Num2) {
+          // Go back to main menu
+          else if(gameWonOptions[2].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
+            gameWon = false;
             displayMainMenu = true;
-            gameWon = gameStart = false;
           }
-          // exit
-          else if(event.key.code == sf::Keyboard::Num3) {
+          // exit the game
+          else if(gameWonOptions[3].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
+            gameWon = false;
             window.close();
-            gameWon = gameStart = displayMainMenu = false;
-          
           }
         }
+        // if(event.type == sf::Event::KeyPressed) {           
+        //   // Restart
+        //   if(event.key.code == sf::Keyboard::Num1) {
+        //     gameWon = displayMainMenu = false;
+        //     gameStart = true;
+        //   }
+        //   // go back to main menu
+        //   else if(event.key.code == sf::Keyboard::Num2) {
+        //     displayMainMenu = true;
+        //     gameWon = gameStart = false;
+        //   }
+        //   // exit
+        //   else if(event.key.code == sf::Keyboard::Num3) {
+        //     window.close();
+        //     gameWon = gameStart = displayMainMenu = false;
+          
+        //   }
+        // }
       }
     }
     // screen to display when the pacman has lost of all its lives
@@ -1517,9 +1579,9 @@ void mainUserInterface() {
 
       window.clear(sf::Color::Black);
 
-      window.draw(mainMenuSprite);
-      for(int i = 0; i < 3; ++i) 
-        window.draw(gameWonOptions[i]);  
+      //window.draw(mainMenuSprite);
+      for(int i = 0; i < 4; ++i) 
+        window.draw(gameOverOptions[i]);  
 
       window.display();
 
@@ -1528,24 +1590,41 @@ void mainUserInterface() {
         if(event.type == sf::Event::Closed) {
           window.close();
           displayMainMenu = gameStart = gameWon = gameOver = false;         
-        }        
-        if(event.type == sf::Event::KeyPressed) {           
-          // Restart
-          if(event.key.code == sf::Keyboard::Num1) {
-            displayMainMenu = gameWon = gameOver = false;
+        }
+        if(event.type== sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+          // Restart  
+          if(gameOverOptions[1].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
+            gameOver = false;
             gameStart = true;
           }
-          // go back to main menu
-          else if(event.key.code == sf::Keyboard::Num2) {
+          // Go back to main menu
+          else if(gameOverOptions[2].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
+            gameOver = false;
             displayMainMenu = true;
-            gameStart = gameWon = gameOver = false;
           }
-          // exit
-          else if(event.key.code == sf::Keyboard::Num3) {
+          // exit the game
+          else if(gameOverOptions[3].getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
+            gameOver = false;
             window.close();
-            displayMainMenu = gameStart = gameWon = gameOver = false;
           }
         }
+        // if(event.type == sf::Event::KeyPressed) {           
+        //   // Restart
+        //   if(event.key.code == sf::Keyboard::Num1) {
+        //     displayMainMenu = gameWon = gameOver = false;
+        //     gameStart = true;
+        //   }
+        //   // go back to main menu
+        //   else if(event.key.code == sf::Keyboard::Num2) {
+        //     displayMainMenu = true;
+        //     gameStart = gameWon = gameOver = false;
+        //   }
+        //   // exit
+        //   else if(event.key.code == sf::Keyboard::Num3) {
+        //     window.close();
+        //     displayMainMenu = gameStart = gameWon = gameOver = false;
+        //   }
+        // }
       }
     }
 
