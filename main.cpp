@@ -1,12 +1,6 @@
 // Current Task
-// Step 1:
-// Spawn the Ghosts within the House
-// Step 2:
-// Add delay to the ghost movement
-// Step 3: 
-// Stop a ghost from getting a power up if it is within the house
-// step 4:
-// Solve scenario 4 simply
+// Add Start Menu
+// Restructure the Code Accordingly
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
@@ -25,22 +19,26 @@ const int numOfGhosts = 4;
 
 // Declare all the Global Variables here for the all the threads to access
 std::atomic<bool> exit_thread_flag{false};
+std::atomic<bool> gameIsOn{false};
+
 sf::RenderWindow window;
 sf::RectangleShape rectangle;
 sf::Texture pacManTex, pacManDeathTex, powerPelletTex, ghostTex[numOfGhosts], blueGhosts;
-//sf::Texture ghostHouseTex;
 sf::Sprite ghostHouseSprite;
 sf::Sprite pacManSprite,pacManDeathSprite, powerPelletSprite[numOfPowerPellets], ghostSprite[numOfGhosts];
 pthread_mutex_t waitForPacMan, waitForInput, waitForGameEngine, waitForDraw, waitForRender;
 pthread_mutex_t waitForGhost[numOfGhosts], waitForGameEngine1[numOfGhosts], powerPellet, consumeBoost;
 pthread_mutex_t permitCheck;
 
-
 int numOfPermits = 2, numOfKeys = 2;
-
 int direction = 0, lives = 3, currentPowerPellets = 0, numOfBoosts = 2;
 bool powerUp = false;
 int readCount = 0;            // keeps track of the number of ghosts reading the maze at a time
+
+// boolean variables related to te functionality of the ghosts
+// appearing as blue and white when the pacman eats a power up
+bool initialState = true, blueGhostOnly = true;
+
 sem_t ghostMutex, mazeAccess; // semaphores used to address the Reader/Writer 
                               // scenario in the context of the PacMan and the Ghosts
 
@@ -53,9 +51,6 @@ int ghostStartingLoc[numOfGhosts][2] = {{12*16,14*16},
                                         {12*16,16*16},
                                         {15*16,14*16},
                                         {15*16,16*16} };                                             
-// boolean variables related to te functionality of the ghosts
-// appearing as blue and white when the pacman eats a power up
-bool initialState = true, blueGhostOnly = true;
 
 // the underlying 2D Maze
 int maze[height][width] = {
@@ -138,11 +133,6 @@ void ghostThreadCleanupHandler(void* arg) {
   return;
 }
 
-
-
-void ghostMvmt() {
-
-}
 
 void* ghost(void* anything) {
 
@@ -1125,14 +1115,17 @@ void* gameEngine(void* anything) {
   pthread_mutex_destroy(&powerPellet);
   pthread_mutex_destroy(&consumeBoost);
   pthread_mutex_destroy(&permitCheck);
-  // 
   
-
   // destroy the semaphores initialized within the Game Engine Thread
   sem_destroy(&ghostMutex);
   sem_destroy(&mazeAccess);
 
-  s::cout<<"Checking if the Game Engine Perfroms all the execution\n";
+  for(int i = 0; i < numOfGhosts; ++i)
+    pthread_join(ghostThread[i], NULL);
+
+  pthread_join(pacManThread, NULL);
+
+  s::cout<<"Checking if the Game Engine Performs all the execution\n";
   // exit the thread
   pthread_exit(NULL);
 }
@@ -1243,6 +1236,9 @@ void destroyMutexes() {
 
 // load the textures
 // and initialize the sprites accordingly
+sf::Texture mainMenuTex;
+sf::Sprite mainMenuSprite;
+
 void loadSprites() {
   // load the texture for PacMan
   pacManTex.loadFromFile("./Resources/Images/Pacman16.png");
@@ -1284,7 +1280,335 @@ void loadSprites() {
   rectangle.setSize(sf::Vector2f (16, 16));
   rectangle.setOutlineThickness(0);
   rectangle.setFillColor(sf::Color::Blue);
+
+  mainMenuTex.loadFromFile("./Resources/Images/mainMenubg.jpg");
+  mainMenuSprite.setTexture(mainMenuTex);
+  mainMenuSprite.setScale(sf::Vector2f(0.53,0.55));
 }
+
+
+// Should Display the Main Menu
+// Display Three Options -> Start, Help, Exit
+// Taking input from Mouse
+
+
+
+void startMenu() {
+
+
+  sf::Text mainMenuOptions[3];
+  sf::Font comicSans;
+  comicSans.loadFromFile("./Resources/Fonts/cuphead.ttf");
+
+  for(int i = 0; i < 3; ++i) {
+    mainMenuOptions[i].setFont(comicSans);
+    mainMenuOptions[i].setCharacterSize(20);
+    mainMenuOptions[i].setFillColor(sf::Color::Red);
+  }
+
+  mainMenuOptions[0].setString("Start New Game");
+  mainMenuOptions[1].setString("Instructions");
+  mainMenuOptions[2].setString("Exit");
+
+  sf::Event menu;
+  bool menuDisplay = true;
+  while(menuDisplay) {
+    window.clear(sf::Color::Black);
+    
+    for(int i = 0; i < 3; ++i)
+      mainMenuOptions[i].setPosition(140, 200 + 50*i);
+
+    window.draw(mainMenuSprite);
+    for(int i = 0; i < 3; ++i)
+      window.draw(mainMenuOptions[i]);
+    
+    window.display();
+
+    while(window.pollEvent(menu)) {
+      if(menu.type == sf::Event::Closed)
+        menuDisplay = false;
+      if(menu.type == sf::Event::KeyPressed) {
+        if(menu.key.code == sf::Keyboard::Num1)
+          s::cout<<"1 Pressed\n";
+        else if(menu.key.code == sf::Keyboard::Num2)
+          s::cout<<"2 Pressed\n";
+        else if(menu.key.code == sf::Keyboard::Num3) { 
+          s::cout<<"3 Pressed\nExiting the Game\n";
+          menuDisplay = false;
+        }
+      }      
+    }
+
+  }
+
+  window.close();
+
+}
+
+
+/*
+
+  ui 
+  window.create
+  load sprites
+  load text 
+
+  while(window.open())
+  {
+    while(mainMenu)
+    {
+
+    }
+    if(gameStart) {
+
+      init the mutexes
+      init the sema
+      lock them accordingly
+      create the game thread accordingly
+
+      while(gamePlay) {
+
+      }
+
+      destroy the mutexes
+      destroy the sema
+
+    }
+
+  }
+
+  destroy the mutexes
+
+
+*/
+
+void initDefault() {
+  
+  exit_thread_flag = false;
+  
+  numOfPermits = numOfKeys = 2;
+  direction = 0;
+  lives = 3;
+  currentPowerPellets = 0;
+  numOfBoosts = 2;
+  powerUp = false;
+  readCount = 0;
+  
+  initialState = true;
+  blueGhostOnly = true;
+
+}
+
+
+void mainUserInterface() {
+
+  bool displayMainMenu = true, gameStart = false;
+  
+  loadSprites();
+
+  sf::Text mainMenuOptions[3];
+  sf::Font comicSans;
+  comicSans.loadFromFile("./Resources/Fonts/cuphead.ttf");
+
+  for(int i = 0; i < 3; ++i) {
+    mainMenuOptions[i].setFont(comicSans);
+    mainMenuOptions[i].setCharacterSize(20);
+    mainMenuOptions[i].setFillColor(sf::Color::Red);
+  }
+
+  mainMenuOptions[0].setString("Start New Game");
+  mainMenuOptions[1].setString("Instructions");
+  mainMenuOptions[2].setString("Exit");
+
+  window.create(sf::VideoMode(448, 496), "Pac-Man");
+  
+  bool windowIsOpen = true;
+
+  while(window.isOpen()){
+
+    while(displayMainMenu) {
+      sf::Event menu;
+
+      window.clear(sf::Color::Black);
+    
+      for(int i = 0; i < 3; ++i)
+        mainMenuOptions[i].setPosition(140, 200 + 50*i);
+
+      window.draw(mainMenuSprite);
+      for(int i = 0; i < 3; ++i)
+        window.draw(mainMenuOptions[i]);
+      
+      window.display();
+
+      while(window.pollEvent(menu)) {
+        if(menu.type == sf::Event::Closed) {
+          displayMainMenu = false;
+          windowIsOpen = false;
+          s::cout<<"We come here3";
+          window.close();
+        }
+        if(menu.type == sf::Event::KeyPressed) {
+          if(menu.key.code == sf::Keyboard::Num1) {
+            displayMainMenu = false;
+            gameStart = true;
+            //s::cout<<"1 Pressed\n";
+          }
+          else if(menu.key.code == sf::Keyboard::Num2) {
+            s::cout<<"2 Pressed\n";
+          }
+          else if(menu.key.code == sf::Keyboard::Num3) { 
+            s::cout<<"3 Pressed\nExiting the Game\n";
+            displayMainMenu = false;
+            window.close();
+          }
+        }      
+      }
+    }
+
+    if(gameStart) {
+
+      // initialize the global variables with the default values
+      initDefault();
+
+      // initialize threads and lock them according to game logic
+      pthread_mutex_init(&waitForInput, NULL);
+      pthread_mutex_lock(&waitForInput);
+      
+      pthread_mutex_init(&waitForGameEngine, NULL);
+      pthread_mutex_lock(&waitForGameEngine);
+      
+      pthread_mutex_init(&waitForDraw, NULL);
+      pthread_mutex_lock(&waitForDraw);
+
+      pthread_mutex_init(&waitForRender, NULL);
+      pthread_mutex_lock(&waitForRender);
+
+      int rc;
+     
+      // initialize thread attributes
+      pthread_attr_t attr;
+      pthread_attr_init(&attr);
+     
+      // create thread for the game engine
+      pthread_t gameEngineThread;
+      rc = pthread_create(&gameEngineThread, &attr, gameEngine, NULL);
+      if(rc) {
+        s::cout<<"Error unable to create thread. Exiting\n";
+        exit(-1);
+      }
+
+      // 0 -> Up, 1 -> Down, 2 -> Left, 3 -> Right
+      // Value set in the UI Thread and Accessed by the PacMan Thread
+      int localDirection = 0;
+      // to check for user inputs
+      sf::Event event;
+
+      // this while loop below acts as the user interface thread
+      while(!exit_thread_flag) {
+
+        
+        
+        
+        
+        
+        
+        while(window.pollEvent(event)) {
+          if(event.type == sf::Event::Closed) {
+            window.close();
+            windowIsOpen = false;
+            pthread_mutex_unlock(&waitForInput);
+            pthread_mutex_unlock(&waitForDraw);
+            gameStart = false;
+            exit_thread_flag = true; 
+          }
+          if(event.type == sf::Event::KeyPressed) {
+            if(event.key.code == sf::Keyboard::W) {
+              localDirection = 1;
+            }
+            else if(event.key.code == sf::Keyboard::S) {
+              localDirection = 2;
+            }
+            else if(event.key.code == sf::Keyboard::A) {
+              localDirection = 3;
+            }
+            else if(event.key.code == sf::Keyboard::D) {
+              localDirection = 4;
+            }
+          }
+        }
+
+        if(direction == -1) 
+          direction = localDirection = 0;
+        else
+          direction = localDirection;
+
+        // signal the PacMan thread that the update value
+        // has been written into the direction variable
+        pthread_mutex_unlock(&waitForInput);
+        
+        // waiting for the gameEngine to coordinate in-between the 
+        // PacMan and the Ghosts
+        pthread_mutex_lock(&waitForGameEngine);    
+
+        if(exit_thread_flag) {
+          window.close();
+          pthread_mutex_unlock(&waitForInput);
+          pthread_mutex_unlock(&waitForDraw);
+          break;
+        }
+
+        // clear the screen
+        window.clear(sf::Color::Black);
+        // Display the grid
+        for(int i = 0; i < height; ++i) {
+          for(int j = 0; j < width; ++j) {
+            if(maze[i][j] == 1) {
+              rectangle.setPosition(16*j,16*i);
+              window.draw(rectangle); 
+            }
+            else if(maze[i][j] == 2) {
+              ghostHouseSprite.setPosition(16*j, 16*i);
+              window.draw(ghostHouseSprite);
+            }
+            // else if(maze[i][j] == 2) {
+            //   coinSprite.setPosition(16*j, 16*i);
+            //   window.draw(coinSprite);
+            // }
+          }
+        }
+
+        // draw everything else on the screen
+        window.draw(pacManSprite);
+        for(int i = 0; i < numOfGhosts; ++i)
+          window.draw(ghostSprite[i]);
+        for(int i = 0; i < numOfPowerPellets; ++i)
+          window.draw(powerPelletSprite[i]);
+        
+        // ensures that the game engine can now render, after 
+        // the relevant sprites have been draw on the window
+        pthread_mutex_unlock(&waitForDraw);
+        
+        // ensures that the game engine has rendered everything 
+        // before continuing further execution
+        pthread_mutex_lock(&waitForRender);
+      }
+
+      pthread_join(gameEngineThread, NULL);
+
+      // destroy thread attributes
+      pthread_attr_destroy(&attr);
+      // destroy the mutexes initialized above  
+      destroyMutexes();
+    
+    }
+
+  }
+
+  // s::cout<<"We come here1";
+  // window.close();
+  // s::cout<<"We come here";
+}
+
 
 int main() {
 
@@ -1293,36 +1617,49 @@ int main() {
   // seed the random number generator
   srand(time(0));
 
-
-  loadSprites();
-
-  pthread_mutex_init(&waitForInput, NULL);
-  pthread_mutex_lock(&waitForInput);
+  mainUserInterface();
   
-  pthread_mutex_init(&waitForGameEngine, NULL);
-  pthread_mutex_lock(&waitForGameEngine);
+ // pthread_exit(NULL);
   
-  pthread_mutex_init(&waitForDraw, NULL);
-  pthread_mutex_lock(&waitForDraw);
-
-  pthread_mutex_init(&waitForRender, NULL);
-  pthread_mutex_lock(&waitForRender);
-  
-  int rc;
-  pthread_attr_t attr;
-  pthread_attr_init(&attr);
-  // create thread for the game engine
-  pthread_t gameEngineThread;
-  rc = pthread_create(&gameEngineThread, &attr, gameEngine, NULL);
-  if(rc) {
-    s::cout<<"Error unable to create thread. Exiting\n";
-    exit(-1);
-  }
-  userInterface();
-  
-  // destroy thread attributes
-  pthread_attr_destroy(&attr);
-  destroyMutexes();
-
   return 0;
+
+  //loadSprites();
+
+  //window.create(sf::VideoMode(448, 496), "Pac-Man");
+
+  //startMenu();
+
+  //return 0;
+
+  
+
+  // pthread_mutex_init(&waitForInput, NULL);
+  // pthread_mutex_lock(&waitForInput);
+  
+  // pthread_mutex_init(&waitForGameEngine, NULL);
+  // pthread_mutex_lock(&waitForGameEngine);
+  
+  // pthread_mutex_init(&waitForDraw, NULL);
+  // pthread_mutex_lock(&waitForDraw);
+
+  // pthread_mutex_init(&waitForRender, NULL);
+  // pthread_mutex_lock(&waitForRender);
+  
+  // int rc;
+  // pthread_attr_t attr;
+  // pthread_attr_init(&attr);
+  // // create thread for the game engine
+  // pthread_t gameEngineThread;
+  // rc = pthread_create(&gameEngineThread, &attr, gameEngine, NULL);
+  // if(rc) {
+  //   s::cout<<"Error unable to create thread. Exiting\n";
+  //   exit(-1);
+  // }
+  // userInterface();
+  
+  // // destroy thread attributes
+  // pthread_attr_destroy(&attr);
+  // destroyMutexes();
+
+  //return 0;
 }
