@@ -1,5 +1,5 @@
 // Current Task
-// Adjust Semaphores and mutexes
+// Consider that the Ghost House Gate is a shared resource
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
@@ -31,18 +31,22 @@ sf::Sprite pacManLifeSprite, mainMenuSprite, ghostHouseSprite, coinSprite;
 
 //pthread_mutex_t waitForRender, waitForPacMan, waitForGameEngine, waitForInput, waitForDraw;
 // pthread_mutex_t waitForGhost[numOfGhosts], waitForGameEngine1[numOfGhosts],
-pthread_mutex_t powerPellet, consumeBoost, permitCheck;
+pthread_mutex_t powerPellet, consumeBoost, permitCheck, pthread_mutex, checkGhostHouseGateAccess;
+sem_t waitForInput, waitForPacMan, waitForGameEngine, waitForDraw, waitForRender;
+sem_t waitForGhost[numOfGhosts], waitForGameEngine1[numOfGhosts];
+
 
 int numOfPermits, numOfKeys, direction, lives, currentPowerPellets, numOfBoosts, coinsPickedUp, currScore;
-bool powerUp = false;
+bool powerUp = false, ghostHouseGateAccess = true;
 int readCount = 0;      // keeps track of the number of ghosts reading the maze at a time
 
 // boolean variables related to te functionality of the ghosts
 // appearing as blue and white when the pacman eats a power up
 bool initialState = true, blueGhostOnly = true;
 
-sem_t waitForInput, waitForPacMan, waitForGameEngine, waitForDraw, waitForRender;
-sem_t waitForGhost[numOfGhosts], waitForGameEngine1[numOfGhosts];
+
+
+
 sem_t ghostMutex, mazeAccess; // semaphores used to address the Reader/Writer 
                               // scenario in the context of the PacMan and the Ghosts
 
@@ -92,7 +96,7 @@ int maze[height][width] = {
 class info1 {
 public:
   int ghostNum;
-  bool hasBoost = false, hasKey = false, hasPermit = false; 
+  bool hasBoost = false, hasKey = false, hasPermit = false, hasGhostHouseGateAccess = false;
 };
 
 // function called when the ghost thread is cancelled
@@ -103,6 +107,7 @@ void ghostThreadCleanupHandler(void* arg) {
     // if the cancelled ghost has an active boost then release it
     if(infoBlock->hasBoost == true) {
       pthread_mutex_lock(&consumeBoost);
+      s::cout<<"Ghost "<<infoBlock->ghostNum<<" has dropped the boost after dieing\n";
         //s::cout<<"In the Cleanup Handler of the "<<infoBlock->ghostNum<<" Ghost\n";
         //s::cout<<"Freeing up the Boost\n";
         ++numOfBoosts;
@@ -115,7 +120,15 @@ void ghostThreadCleanupHandler(void* arg) {
         ++numOfPermits;
       if(infoBlock->hasKey) 
         ++numOfKeys;
+      s::cout<<"Ghost "<<infoBlock->ghostNum<<" has dropped permit and key after dieing\n";
       pthread_mutex_unlock(&permitCheck);
+    }
+    // if the cancelled ghost has access to the ghost house gate
+    if(infoBlock->hasGhostHouseGateAccess) {
+      pthread_mutex_lock(&checkGhostHouseGateAccess);
+      ghostHouseGateAccess = true;
+      s::cout<<"Ghost "<<infoBlock->ghostNum<<" has give up the access to ghost house gate\n";
+      pthread_mutex_unlock(&checkGhostHouseGateAccess);
     }
     delete infoBlock;
     infoBlock = NULL;
@@ -146,6 +159,7 @@ void* ghost(void* anything) {
   // variables used for the purpose of displaying blue
   // and white ghosts when the pacman eats the power up
   bool check = false, hasBoost = false, withinHouse = true, haveKey = false, havePermit = false;
+  bool haveGhostHouseGateAccess = false;
   int blueGhostSpriteFrame = 0;
   
   sf::Clock startDelay, permitDelay;
@@ -158,9 +172,10 @@ void* ghost(void* anything) {
     if(startDelay.getElapsedTime().asSeconds() > 3) {
       
       // if the ghost is within the house and does not have a permit or key or both
-      if(withinHouse == true && (havePermit == false || haveKey == false)) {
-        pthread_mutex_lock(&permitCheck);
-        // check if there any available permits
+      if(withinHouse == true && (havePermit == false || haveKey == false || haveGhostHouseGateAccess == false)) {
+        if(havePermit == false || haveKey == false) {
+          pthread_mutex_lock(&permitCheck);
+          // check if there any available permits
           if(numOfPermits > 0) {
             // first check if the current ghost needs a permit
             if(havePermit == false) {
@@ -170,14 +185,31 @@ void* ghost(void* anything) {
               s::cout<<"Ghost "<<temp1->ghostNum<<" has picked up a permit\n";
             }
             // then check if the current ghost needs a key
-            if(numOfKeys > 0 && haveKey == false) {
+            // if(numOfKeys > 0 && haveKey == false) {
+            //   --numOfKeys;
+            //   haveKey = true;
+            //   temp1->hasKey = true;
+            //   s::cout<<"Ghost "<<temp1->ghostNum<<" has picked up a key\n";
+            // }  
+          }
+          if(havePermit == true && numOfKeys > 0 && haveKey == false) {
               --numOfKeys;
               haveKey = true;
               temp1->hasKey = true;
               s::cout<<"Ghost "<<temp1->ghostNum<<" has picked up a key\n";
-            }  
           }
-        pthread_mutex_unlock(&permitCheck);
+          pthread_mutex_unlock(&permitCheck);
+        }
+        if(havePermit == true && haveKey == true && haveGhostHouseGateAccess == false ) {
+          pthread_mutex_lock(&checkGhostHouseGateAccess);
+          if(ghostHouseGateAccess == true) {
+            haveGhostHouseGateAccess = true;
+            ghostHouseGateAccess = false;
+            s::cout<<"Ghost "<<temp1->ghostNum<<" has picked up the gate access";
+            temp1->hasGhostHouseGateAccess = true;
+          }
+          pthread_mutex_unlock(&checkGhostHouseGateAccess);
+        }
       }
       // ghost relinquishes the permit and the key once it is out of the house
       else if(withinHouse == false && havePermit && haveKey && permitDelay.getElapsedTime().asSeconds() > 3) {
@@ -188,6 +220,16 @@ void* ghost(void* anything) {
           temp1->hasPermit = temp1->hasKey = false;
           s::cout<<"Ghost "<<temp1->ghostNum<<" has given up the permit and key\n";
         pthread_mutex_unlock(&permitCheck);
+      }
+
+      // give up the ghost house gate access once out of the house
+      if(withinHouse == false && haveGhostHouseGateAccess == true) {
+        pthread_mutex_lock(&checkGhostHouseGateAccess);
+        ghostHouseGateAccess = true;
+        haveGhostHouseGateAccess = false;
+        s::cout<<"Ghost "<<temp1->ghostNum<<" has given up the ghost house key\n";
+        temp1->hasGhostHouseGateAccess = false;
+        pthread_mutex_unlock(&checkGhostHouseGateAccess);
       }
 
       // check if any boost is available 
@@ -202,13 +244,26 @@ void* ghost(void* anything) {
         pthread_mutex_unlock(&consumeBoost);
       }
 
+      // if(withinHouse && havePermit && haveKey && haveGhostHouseGateAccess) {
+        
+      //   ghostSprite[ghostNum].move(0, -cellSize);
+
+      //   continue;
+      // }
+
       // basic Movement Generator for the Ghost
       if(numOfMoves == 0) {
-        numOfMoves = (rand()%5) + 1;
-        if(withinHouse)
-          direction = 1;
-        else
-          direction = (rand()%4) + 1;        
+        if(withinHouse && haveGhostHouseGateAccess == false) {
+          numOfMoves = 1;
+          direction = -1;
+        }
+        else {
+          numOfMoves = (rand()%5) + 1;
+          if(withinHouse && haveGhostHouseGateAccess)
+            direction = 1;
+          else
+            direction = (rand()%4) + 1;        
+        }
       }
       --numOfMoves;
       if(numOfMoves > 0 && hasBoost == true)
@@ -249,7 +304,7 @@ void* ghost(void* anything) {
       
       if(direction == 1) {
       
-        if(maze[yPos-1][xPos] != 1 && (maze[yPos-1][xPos] != 2 || (havePermit && haveKey && withinHouse))   ) {
+        if(maze[yPos-1][xPos] != 1 && (maze[yPos-1][xPos] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))   ) {
           ghostSprite[ghostNum].move(0, -cellSize);
           if(maze[yPos-1][xPos] == 3 && withinHouse) {
             withinHouse = false;
@@ -274,7 +329,7 @@ void* ghost(void* anything) {
           }
         }  
       
-        else if(maze[yPos+1][xPos] != 1 && (maze[yPos+1][xPos] != 2 || (havePermit && haveKey && withinHouse)) ) {
+        else if(maze[yPos+1][xPos] != 1 && (maze[yPos+1][xPos] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess)) ) {
           ghostSprite[ghostNum].move(0, cellSize);
           if(maze[yPos+1][xPos] == 3 && withinHouse) {
             withinHouse = false;
@@ -299,7 +354,7 @@ void* ghost(void* anything) {
           }
         }
       
-        else if(maze[yPos][xPos-1] != 1 && (maze[yPos][xPos-1] != 2 || (havePermit && haveKey && withinHouse))) {
+        else if(maze[yPos][xPos-1] != 1 && (maze[yPos][xPos-1] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(-cellSize, 0);
           if(maze[yPos][xPos-1] == 3 && withinHouse) {
             withinHouse = false;
@@ -324,7 +379,7 @@ void* ghost(void* anything) {
           }
         }
       
-        else if(maze[yPos][xPos+1] != 1 && (maze[yPos][xPos+1] != 2 || (havePermit && haveKey && withinHouse))) {
+        else if(maze[yPos][xPos+1] != 1 && (maze[yPos][xPos+1] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(cellSize, 0);
           if(maze[yPos][xPos+1] == 3 && withinHouse) {
             withinHouse = false;
@@ -353,7 +408,7 @@ void* ghost(void* anything) {
       
       else if(direction == 2) {
       
-        if(maze[yPos+1][xPos] != 1 && (maze[yPos+1][xPos] != 2 || (havePermit && haveKey && withinHouse))) {
+        if(maze[yPos+1][xPos] != 1 && (maze[yPos+1][xPos] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(0, cellSize);
           if(maze[yPos+1][xPos] == 3 && withinHouse) {
             withinHouse = false;
@@ -378,7 +433,7 @@ void* ghost(void* anything) {
           }
         }
       
-        else if(maze[yPos-1][xPos] != 1 && (maze[yPos-1][xPos] != 2 || (havePermit && haveKey && withinHouse))) {
+        else if(maze[yPos-1][xPos] != 1 && (maze[yPos-1][xPos] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(0, -cellSize);
           if(maze[yPos-1][xPos] == 3 && withinHouse) {
             withinHouse = false;
@@ -403,7 +458,7 @@ void* ghost(void* anything) {
           }
         }
       
-        else if(maze[yPos][xPos-1] != 1 && (maze[yPos][xPos-1] != 2 || (havePermit && haveKey && withinHouse))) {
+        else if(maze[yPos][xPos-1] != 1 && (maze[yPos][xPos-1] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(-cellSize, 0);
           if(maze[yPos][xPos-1] == 3 && withinHouse) {
             withinHouse = false;
@@ -428,7 +483,7 @@ void* ghost(void* anything) {
           }
         }
       
-        else if(maze[yPos][xPos+1] != 1 && (maze[yPos][xPos+1] != 2 || (havePermit && haveKey && withinHouse))) {
+        else if(maze[yPos][xPos+1] != 1 && (maze[yPos][xPos+1] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(cellSize, 0);
           if(maze[yPos][xPos+1] == 3 && withinHouse) {
             withinHouse = false;
@@ -457,7 +512,7 @@ void* ghost(void* anything) {
 
       else if(direction == 3) {
 
-        if(maze[yPos][xPos-1] != 1 && (maze[yPos][xPos-1] != 2 || (havePermit && haveKey && withinHouse))) {
+        if(maze[yPos][xPos-1] != 1 && (maze[yPos][xPos-1] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(-cellSize, 0);
           if(maze[yPos][xPos-1] == 3 && withinHouse) {
             withinHouse = false;
@@ -482,7 +537,7 @@ void* ghost(void* anything) {
           }
         }
 
-        else if(maze[yPos+1][xPos] != 1 && (maze[yPos+1][xPos] != 2 || (havePermit && haveKey && withinHouse))) {
+        else if(maze[yPos+1][xPos] != 1 && (maze[yPos+1][xPos] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(0, cellSize);
           if(maze[yPos+1][xPos] == 3 && withinHouse) {
             withinHouse = false;
@@ -507,7 +562,7 @@ void* ghost(void* anything) {
           }
         }
 
-        else if(maze[yPos-1][xPos] != 1 && (maze[yPos-1][xPos] != 2 || (havePermit && haveKey && withinHouse))) {
+        else if(maze[yPos-1][xPos] != 1 && (maze[yPos-1][xPos] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(0, -cellSize);
           if(maze[yPos-1][xPos] == 3 && withinHouse) {
             withinHouse = false;
@@ -532,7 +587,7 @@ void* ghost(void* anything) {
           }
         }
 
-        else if(maze[yPos][xPos+1] != 1 && (maze[yPos][xPos+1] != 2 || (havePermit && haveKey && withinHouse))) {
+        else if(maze[yPos][xPos+1] != 1 && (maze[yPos][xPos+1] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(cellSize, 0);       
           if(maze[yPos][xPos+1] == 3 && withinHouse) {
             withinHouse = true;
@@ -561,7 +616,7 @@ void* ghost(void* anything) {
 
       else if(direction == 4) {
 
-        if(maze[yPos][xPos+1] != 1 && (maze[yPos][xPos+1] != 2 || (havePermit && haveKey && withinHouse))) {
+        if(maze[yPos][xPos+1] != 1 && (maze[yPos][xPos+1] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(cellSize, 0);
           if(maze[yPos][xPos+1] == 3 && withinHouse) {
             withinHouse = false;
@@ -586,7 +641,7 @@ void* ghost(void* anything) {
           }
         }
 
-        else if(maze[yPos+1][xPos] != 1 && (maze[yPos+1][xPos] != 2 || (havePermit && haveKey && withinHouse))) {
+        else if(maze[yPos+1][xPos] != 1 && (maze[yPos+1][xPos] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(0, cellSize);
           if(maze[yPos+1][xPos] == 3 && withinHouse) {
             withinHouse = false;
@@ -611,7 +666,7 @@ void* ghost(void* anything) {
           }
         }
 
-        else if(maze[yPos-1][xPos] != 1 && (maze[yPos-1][xPos] != 2 || (havePermit && haveKey && withinHouse))) {
+        else if(maze[yPos-1][xPos] != 1 && (maze[yPos-1][xPos] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(0, -cellSize);
           if(maze[yPos-1][xPos] == 3 && withinHouse)
             withinHouse = false;
@@ -634,7 +689,7 @@ void* ghost(void* anything) {
           }
         }
 
-        else if(maze[yPos][xPos-1] != 1 && (maze[yPos][xPos-1] != 2 || (havePermit && haveKey && withinHouse))) {
+        else if(maze[yPos][xPos-1] != 1 && (maze[yPos][xPos-1] != 2 || (havePermit && haveKey && withinHouse && haveGhostHouseGateAccess))) {
           ghostSprite[ghostNum].move(-cellSize, 0);
           if(maze[yPos][xPos-1] == 3 && withinHouse) {
             withinHouse = false;
@@ -680,6 +735,7 @@ void* ghost(void* anything) {
     sem_wait(&waitForGameEngine1[ghostNum]);
   
   }
+  
   if(hasBoost == true) {
     pthread_mutex_lock(&consumeBoost);
     hasBoost = false;
@@ -913,6 +969,7 @@ void* gameEngine(void* anything) {
   pthread_mutex_init(&powerPellet, NULL);
   pthread_mutex_init(&consumeBoost, NULL);
   pthread_mutex_init(&permitCheck, NULL);
+  pthread_mutex_init(&checkGhostHouseGateAccess, NULL);
 
   // initialize thread attributes
   pthread_attr_t attr;
@@ -1123,7 +1180,8 @@ void* gameEngine(void* anything) {
   pthread_mutex_destroy(&powerPellet);
   pthread_mutex_destroy(&consumeBoost);
   pthread_mutex_destroy(&permitCheck);
-  
+  pthread_mutex_destroy(&checkGhostHouseGateAccess);
+
   // destroy the semaphores initialized within the Game Engine Thread
   sem_destroy(&waitForPacMan);
   sem_destroy(&ghostMutex);
