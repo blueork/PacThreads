@@ -1,10 +1,14 @@
 // Current Task
-// Add Ghost
-// Add its sprite and texture
-// Simply create a function for ghost
-// Add the mechanism for its movement
-// Solve Scenario 1 via Read/Write Problem
-
+// Step 1:
+// Add Mechanism to detect collision between the Ghost and the PacMan
+// Step 2:
+// Add Lives
+// Step 3:
+// PacMan goes to its initial postion and so does the ghost
+// Step 4:
+// Achieve step 3 by destroying and re-creating ghost threads
+// Step 5:
+// Add Animation of Bomb Blast
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
@@ -21,15 +25,17 @@
 // Declare all the Global Variables here for the all the threads to access
 std::atomic<bool> exit_thread_flag{false};
 sf::RenderWindow window;
-sf::Texture pacManTex, ghostTex;
-sf::Sprite pacManSprite, ghostSprite1;
+sf::RectangleShape rectangle;
+sf::Texture pacManTex, pacManDeathTex, ghostTex;
+sf::Sprite pacManSprite,pacManDeathSprite, ghostSprite1;
 pthread_mutex_t waitForPacMan, waitForInput, waitForGameEngine, waitForDraw, waitForRender;
 pthread_mutex_t waitForGhost[1], waitForGameEngine1[1];
 int direction = 0;
-
+int lives = 3;
 int readCount = 0;            // keeps track of the number of ghosts reading the maze at a time
 sem_t ghostMutex, mazeAccess; // semaphores used to address the Reader/Writer 
                               // scenario in the context of the PacMan and the Ghosts
+
 
 // the underlying 2D Maze
 int maze[height][width] = {
@@ -68,6 +74,12 @@ int maze[height][width] = {
 
 void* ghost(void* anything) {
 
+  // set the relevant cancel states for the thread
+  pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+  pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+  
+  // set the initial starting position
+  ghostSprite1.setPosition(160, 224);
   //int key = 1, exitPermit = 1, currentState = 0;
   //bool withInHouse = true;
   // int initialDirection[3][2] = { {1, 0},
@@ -78,8 +90,10 @@ void* ghost(void* anything) {
   int numOfMoves = 0, direction = 0, xPos, yPos;
   sf::Vector2f currPos;
 
+
   while(!exit_thread_flag) {
 
+    
     // if(withInHouse) {
 
     //     if(key && exitPermit) {
@@ -185,6 +199,13 @@ void* ghost(void* anything) {
 // shall move the PacMan with respect to Walls 
 void* pacMan(void* anything) {
 
+  // set the relevant cancel states for the thread
+  pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+  pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+
+  // set the initial starting position
+  pacManSprite.setPosition(16,16);
+
   int localDirection, xPos, yPos;
   sf::Vector2f currPos;
 
@@ -230,6 +251,40 @@ void* pacMan(void* anything) {
 }
 
 
+void collisionAnimation() {
+
+  pacManDeathSprite.setPosition(pacManSprite.getPosition());
+
+  sf::Clock delay;
+  
+  for(int i = 0; i < 12; ++i) {
+    window.clear(sf::Color::Black);
+    // Display the grid
+    for(int i = 0; i < height; ++i) {
+      for(int j = 0; j < width; ++j) {
+        if(maze[i][j] == 1) {
+          rectangle.setPosition(16*j,16*i);
+          window.draw(rectangle); 
+        }
+        // else if(maze[i][j] == 2) {
+        //   coinSprite.setPosition(16*j, 16*i);
+        //   window.draw(coinSprite);
+        // }
+      }
+    }
+    pacManDeathSprite.setTextureRect(sf::IntRect(i*16,0,16,16));
+    window.draw(pacManDeathSprite);
+    window.display();
+    // add delay to add the effect fof frame-rates 
+    delay.restart();
+    while(delay.getElapsedTime().asSeconds() < 0.1) {};
+  }
+  // reset the relevant values
+  direction = -1;
+  pacManSprite.setPosition(-10,-10);
+  ghostSprite1.setPosition(-10,-10);
+}
+
 void* gameEngine(void* anything) {
 
   int ghostCount = 1;
@@ -269,15 +324,50 @@ void* gameEngine(void* anything) {
 
   // clock for adding delay
   sf::Clock delayClock;
- 
+  sf::Vector2f pacManPos, ghostPos;
+
+  bool restart = false;
   while(!exit_thread_flag) {
 
+    // recreate the PacMan and the Ghost Threads after collision
+    if(restart) {
+      rc = pthread_create(&pacManThread, &attr, pacMan, NULL);
+      if(rc) {
+        s::cout<<"Error unable to create PacMan thread. Exiting\n";
+        exit(-1);
+      }
+      rc = pthread_create(&ghostThread1, &attr, ghost, NULL);
+      if(rc) {
+        s::cout<<"Error unable to create Ghost thread. Exiting\n";
+        exit(-1);
+      }
+      restart = false;
+    }
     // wait for the PacMan thread to execute
     pthread_mutex_lock(&waitForPacMan);
 
     // wait for the Ghost Threads to Execute
     for(int i = 0; i < ghostCount; ++i)
       pthread_mutex_lock(&waitForGhost[i]);
+
+    // check for collision in-between PacMan and Ghost
+    pacManPos = pacManSprite.getPosition();
+    for(int i = 0; i < ghostCount; ++i) {
+      if(pacManPos == ghostSprite1.getPosition()) {
+        // destroy the Ghost Threads
+        pthread_cancel(ghostThread1);
+        // destroy the PacMan Threads
+        pthread_cancel(pacManThread);
+        //s::cout<<"Collision Check\n";
+        --lives;
+        collisionAnimation();
+        // exit all the threads if no lives left
+        if(lives == 0) 
+          exit_thread_flag = true;
+        restart = true;
+        break;
+      }
+    }
 
     // signal the ui thread that it can draw the final sprites on to the screen
     pthread_mutex_unlock(&waitForGameEngine);
@@ -313,12 +403,6 @@ void userInterface() {
   // opens up the window to display everything
   window.create(sf::VideoMode(448, 496), "Pac-Man");
 
-  // Rectangle Blocks to make up the wall
-  sf::RectangleShape rectangle;
-  rectangle.setSize(sf::Vector2f (16, 16));
-  rectangle.setOutlineThickness(0);
-  rectangle.setFillColor(sf::Color::Blue);
-
   // 0 -> Up, 1 -> Down, 2 -> Left, 3 -> Right
   // Value set in the UI Thread and Accessed by the PacMan Thread
   int localDirection = 0;
@@ -350,7 +434,10 @@ void userInterface() {
       }
     }
 
-    direction = localDirection;
+    if(direction == -1) 
+      direction = localDirection = 0;
+    else
+      direction = localDirection;
     // signal the PacMan thread that the update value
     // has been written into the direction variable
     pthread_mutex_unlock(&waitForInput);
@@ -359,6 +446,12 @@ void userInterface() {
     // PacMan and the Ghosts
     pthread_mutex_lock(&waitForGameEngine);    
 
+    if(exit_thread_flag) {
+      window.close();
+      pthread_mutex_unlock(&waitForInput);
+      pthread_mutex_unlock(&waitForDraw);
+      break;
+    }
     // clear the screen
     window.clear(sf::Color::Black);
     // Display the grid
@@ -414,17 +507,22 @@ int main() {
   pacManSprite.setTexture(pacManTex);
   // assign the PacMan sprite the correct texture
   pacManSprite.setTextureRect(sf::IntRect(16,0,16,16));
-  // set the initial starting position
-  pacManSprite.setPosition(16,16);
   
+  // load the texture for the Death Animation of the PacMan
+  pacManDeathTex.loadFromFile("./Resources/Images/PacmanDeath16.png");
+  pacManDeathSprite.setTexture(pacManDeathTex);
+
   // load the texture for Ghost
   ghostTex.loadFromFile("./Resources/Images/blinky.png");
   ghostSprite1.setTexture(ghostTex);
   // assign the Ghost Sprite the correct texture
   ghostSprite1.setTextureRect(sf::IntRect(0,0,16,16));
-  // set the initial starting position
-  ghostSprite1.setPosition(160, 224);
-
+  
+  // initialize the rectangle blocks that make up the wall
+  rectangle.setSize(sf::Vector2f (16, 16));
+  rectangle.setOutlineThickness(0);
+  rectangle.setFillColor(sf::Color::Blue);
+  
   pthread_mutex_init(&waitForGameEngine, NULL);
   pthread_mutex_lock(&waitForGameEngine);
   
