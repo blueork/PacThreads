@@ -1,8 +1,9 @@
 // Current Task
-// Fix the Starting Position of the Pacman and add delay
+// Add Sound effects
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
 #include <pthread.h>
 #include <atomic>
 #include <time.h>     
@@ -29,12 +30,13 @@ sf::Texture mainMenuTex, rectTex;
 sf::Sprite pacManSprite,pacManDeathSprite, powerPelletSprite[numOfPowerPellets], ghostSprite[numOfGhosts];
 sf::Sprite pacManLifeSprite, mainMenuSprite, ghostHouseSprite, coinSprite;
 
+sf::SoundBuffer pacManDeathSoundBuffer, pacManEatGhostSoundBuffer, pacManChompSoundBuffer, pacManStartSoundBuffer;
+
 //pthread_mutex_t waitForRender, waitForPacMan, waitForGameEngine, waitForInput, waitForDraw;
 // pthread_mutex_t waitForGhost[numOfGhosts], waitForGameEngine1[numOfGhosts],
 pthread_mutex_t powerPellet, consumeBoost, permitCheck, pthread_mutex, checkGhostHouseGateAccess;
 sem_t waitForInput, waitForPacMan, waitForGameEngine, waitForDraw, waitForRender;
 sem_t waitForGhost[numOfGhosts], waitForGameEngine1[numOfGhosts];
-
 
 int numOfPermits, numOfKeys, direction, lives, currentPowerPellets, numOfBoosts, coinsPickedUp, currScore;
 bool powerUp = false, ghostHouseGateAccess = true;
@@ -43,9 +45,6 @@ int readCount = 0;      // keeps track of the number of ghosts reading the maze 
 // boolean variables related to te functionality of the ghosts
 // appearing as blue and white when the pacman eats a power up
 bool initialState = true, blueGhostOnly = true;
-
-
-
 
 sem_t ghostMutex, mazeAccess; // semaphores used to address the Reader/Writer 
                               // scenario in the context of the PacMan and the Ghosts
@@ -90,9 +89,8 @@ int maze[height][width] = {
   {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1},
   {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1} };  
 
-// class to hold info about a ghost
-// used primarily for passing data onto the cleanup handler
-// of a ghost
+// class to hold info about a ghost, used primarily for 
+// passing data onto the cleanup handler of a ghost
 class info1 {
 public:
   int ghostNum;
@@ -799,6 +797,11 @@ void* pacMan(void* anything) {
   
   sf::Vector2f currPos;
   
+  sf::Sound pacManChompSound;
+  pacManChompSound.setBuffer(pacManChompSoundBuffer);
+  bool soundOn = false;
+  int iter = 0;
+
   // To keep track of the time for the effect of the Power Pellet
   sf::Clock powerUpClock, initialDelayClock;
 
@@ -826,6 +829,12 @@ void* pacMan(void* anything) {
       sem_wait(&mazeAccess);
       if(direction == 1) {
         if(maze[yPos-1][xPos] != 1 && maze[yPos-1][xPos] != 2) {
+          ++iter;
+          if(soundOn == false || iter >= 5) {
+            pacManChompSound.play(); 
+            iter = 0;
+            soundOn = true;
+          }
           if(maze[yPos-1][xPos] == 4) {
             ++coinsPickedUp;
             maze[yPos-1][xPos] = 0;
@@ -835,9 +844,20 @@ void* pacMan(void* anything) {
           pacManSprite.setTextureRect(sf::IntRect(16*spriteFrame,16,16,16));
           spriteFrame = ((spriteFrame+1)%5)+1;
         }
+        else {
+          pacManChompSound.stop();
+          iter = 0;
+          soundOn = false;
+        }
       }
       else if(direction == 2) {
         if(maze[yPos+1][xPos] != 1 && maze[yPos+1][xPos] != 2 ) {
+          ++iter;
+          if(soundOn == false || iter >= 5) {
+            pacManChompSound.play();
+            iter = 0;
+            soundOn = true;
+          }
           if(maze[yPos+1][xPos] == 4) {
             ++coinsPickedUp;
             maze[yPos+1][xPos] = 0;
@@ -847,9 +867,20 @@ void* pacMan(void* anything) {
           pacManSprite.setTextureRect(sf::IntRect(16*spriteFrame,48,16,16));
           spriteFrame = ((spriteFrame+1)%5)+1;
         }
+        else {
+          pacManChompSound.stop();
+          iter = 0;
+          soundOn = false;
+        }
       }
       else if(direction == 3) {
         if(maze[yPos][xPos-1] != 1 && maze[yPos][xPos-1] != 2 ) {
+          ++iter;
+          if(soundOn == false || iter >= 5) {
+            pacManChompSound.play();
+            soundOn = true;
+            iter = 0;
+          }
           if(maze[yPos][xPos-1] == 4) {
             ++coinsPickedUp;
             maze[yPos][xPos-1] = 0;
@@ -859,9 +890,20 @@ void* pacMan(void* anything) {
           pacManSprite.setTextureRect(sf::IntRect(16*spriteFrame,32,16,16));
           spriteFrame = ((spriteFrame+1)%5)+1;
         }
+        else {
+          pacManChompSound.stop();
+          iter = 0;
+          soundOn = false;
+        }
       }
       else if(direction == 4) {
         if(maze[yPos][xPos+1] != 1 && maze[yPos][xPos+1] != 2) {
+          ++iter;
+          if(soundOn == false || iter >= 5) {
+            pacManChompSound.play();
+            iter = 0;
+            soundOn = true;
+          }
           if(maze[yPos][xPos+1] == 4) {
             ++coinsPickedUp;
             maze[yPos][xPos+1] = 0;
@@ -871,7 +913,14 @@ void* pacMan(void* anything) {
           pacManSprite.setTextureRect(sf::IntRect(16*spriteFrame,0,16,16));
           spriteFrame = ((spriteFrame+1)%5)+1;
         }
+        else {
+          pacManChompSound.stop();
+          iter = 0;
+          soundOn = false;
+        }
       }
+      else 
+        pacManChompSound.stop();
       sem_post(&mazeAccess);
 
     }
@@ -908,10 +957,16 @@ void* pacMan(void* anything) {
     // signal the game engine thread that it can proceed further
     sem_post(&waitForPacMan);
   }
+  pacManChompSound.stop();
+
   pthread_exit(NULL);
 }
 
 void collisionAnimation() {
+
+  sf::Sound pacManDeathSound;
+  pacManDeathSound.setBuffer(pacManDeathSoundBuffer);
+  pacManDeathSound.play();
 
   pacManDeathSprite.setPosition(pacManSprite.getPosition());
 
@@ -941,13 +996,18 @@ void collisionAnimation() {
     window.display();
     // add delay to add the effect of frame-rates 
     delay.restart();
-    while(delay.getElapsedTime().asSeconds() < 0.11) {};
+    while(delay.getElapsedTime().asSeconds() < 0.123) {};
   }
+   
   // reset the relevant values
   direction = -1;
   pacManSprite.setPosition(-20,-20);
   for(int i = 0; i < numOfGhosts; ++i)
     ghostSprite[i].setPosition(-20,-0);
+
+  pacManDeathSound.stop();
+
+  return;
 }
 
 void* gameEngine(void* anything) {
@@ -1004,9 +1064,15 @@ void* gameEngine(void* anything) {
   sf::Clock delayClock, powerPelletGeneratorTimer, blueGhostTimer1, blueGhostTimer2;
   sf::Vector2f pacManPos, ghostPos, temp(-20,-20);
 
+  sf::Sound pacManEatGhostSound, pacManStartSound;
+  pacManEatGhostSound.setBuffer(pacManEatGhostSoundBuffer);
+  pacManStartSound.setBuffer(pacManStartSoundBuffer);
+
   bool restart = false, ghostDead = false, blueGhostSprite = false;
   int powerPelletPos = 0;     // points to the first power pellet that has to be created 
   int ghostToReAnimate = -1;
+
+  pacManStartSound.play();
 
   while(!exit_thread_flag) {
 
@@ -1122,9 +1188,10 @@ void* gameEngine(void* anything) {
         ghostDead = true;
         ghostToReAnimate = i;
         // if the pacman has a power up enabled then only destroy the ghost
-        if(powerUp)
+        if(powerUp) {
+          pacManEatGhostSound.play();
           break;
-
+        }
         // destroy the PacMan Thread
         pthread_cancel(pacManThread);
 
@@ -1172,6 +1239,9 @@ void* gameEngine(void* anything) {
       sem_post(&waitForGameEngine1[i]);
   }
 
+  pacManEatGhostSound.stop();
+  pacManStartSound.stop();
+  
   // destroy thread attributes
   pthread_attr_destroy(&attr);
   
@@ -1273,6 +1343,13 @@ void loadSprites() {
   mainMenuSprite.setScale(sf::Vector2f(0.68,0.72));
 }
 
+void loadSounds() {
+  pacManDeathSoundBuffer.loadFromFile("./Resources/Sounds/pacman_death.wav");
+  pacManEatGhostSoundBuffer.loadFromFile("./Resources/Sounds/pacman_eatghost.wav");
+  pacManChompSoundBuffer.loadFromFile("./Resources/Sounds/pacman_chomp.wav");
+  pacManStartSoundBuffer.loadFromFile("./Resources/Sounds/pacman_beginning.wav");
+}
+
 void initDefault() {
   
   exit_thread_flag = false;
@@ -1299,6 +1376,7 @@ void mainUserInterface() {
   bool displayMainMenu = true, gameStart = false;
   
   loadSprites();
+  loadSounds();
 
   sf::Text mainMenuOptions[3], gameWonOptions[4], gameOverOptions[4], scoreDisplay;
   sf::Font pacFont;
