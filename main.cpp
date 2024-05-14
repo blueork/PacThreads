@@ -1,6 +1,5 @@
 // Current Task
-// Display the PacMan
-// Move the PacMan with respect to Collision
+// Multi-Thread the PacMan
 #include <iostream>
 #include <SFML/Graphics.hpp>
 #include <pthread.h>
@@ -14,6 +13,9 @@
 sf::RenderWindow window;
 sf::Texture pacManTex;
 sf::Sprite pacManSprite;
+
+int direction = 0;
+pthread_mutex_t lock1, lock2, waitForPacMan, waitForInput;
 
 int maze[height][width] = {
     {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
@@ -53,30 +55,47 @@ int maze[height][width] = {
 // responsible for everything pacMan related
 // shall move the PacMan with respect to Walls 
 
-void pacMan(int direction) {
+void* pacMan(void* anything) {
 
-  if(direction) {
+  pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+  int localDirection;
+
+  while(true) {
+
+    pthread_mutex_lock(&waitForInput);
+    pthread_mutex_lock(&lock1);      
+        
+        localDirection = direction;
     
-    sf::Vector2f currPos = pacManSprite.getPosition();
-    int xPos = (currPos.x/16), yPos = (currPos.y/16);
-    if(direction == 1) {
-      if(maze[yPos-1][xPos] != 1)
-        pacManSprite.move(0, -16);
+    pthread_mutex_unlock(&lock1);
+
+    pthread_mutex_lock(&lock2);
+    if(localDirection) {
+      
+      sf::Vector2f currPos = pacManSprite.getPosition();
+      int xPos = (currPos.x/16), yPos = (currPos.y/16);
+      if(direction == 1) {
+        if(maze[yPos-1][xPos] != 1)
+          pacManSprite.move(0, -16);
+      }
+      else if(direction == 2) {
+        if(maze[yPos+1][xPos] != 1)
+          pacManSprite.move(0, 16);
+      }
+      else if(direction == 3) {
+        if(maze[yPos][xPos-1] != 1)
+          pacManSprite.move(-16, 0);
+      }
+      else if(direction == 4) {
+        if(maze[yPos][xPos+1] != 1)
+          pacManSprite.move(16, 0);
+      }
+    
     }
-    else if(direction == 2) {
-      if(maze[yPos+1][xPos] != 1)
-        pacManSprite.move(0, 16);
-    }
-    else if(direction == 3) {
-      if(maze[yPos][xPos-1] != 1)
-        pacManSprite.move(-16, 0);
-    }
-    else if(direction == 4) {
-      if(maze[yPos][xPos+1] != 1)
-        pacManSprite.move(16, 0);
-    }
+    pthread_mutex_unlock(&waitForPacMan);
+    pthread_mutex_unlock(&lock2);
+    
   }
-  
 }
 
 // the userInterface thread
@@ -87,6 +106,24 @@ void pacMan(int direction) {
 
 void userInterface() {
 
+  pthread_mutex_init(&lock1, NULL);
+  pthread_mutex_init(&lock2, NULL);
+  pthread_mutex_init(&waitForPacMan, NULL);
+  pthread_mutex_init(&waitForInput, NULL); 
+   
+  pthread_mutex_lock(&waitForPacMan);
+  pthread_mutex_lock(&waitForInput);
+
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+
+  pthread_t pacManThread;
+  
+  for(int i = 0; i < 1; ++i)
+    pthread_create(&pacManThread, &attr, pacMan, NULL);
+
+
+
   window.create(sf::VideoMode(448, 496), "Pac-Man");
 
   // Rectangle Blocks to make up the wall
@@ -96,42 +133,59 @@ void userInterface() {
   rectangle.setFillColor(sf::Color::Blue);
 
   sf::Clock delay;
-  int direction = 0;
+  int localDirection = 0;
   // to check for user inputs
   sf::Event event;
+  bool check = false;
   while(window.isOpen()) {
 
     while(window.pollEvent(event)) {
-      if(event.type == sf::Event::Closed)
-        window.close();
+      if(event.type == sf::Event::Closed) {
+        window.close(); 
+        s::cout<<"check1\n";
+        check = true;
+      }
       if(event.type == sf::Event::KeyPressed) {
         if(event.key.code == sf::Keyboard::W) {
           //delta_y = -1;
           // s::cout<<"W\n";
-          direction = 1;
+          localDirection = 1;
         }
         else if(event.key.code == sf::Keyboard::S) {
           // delta_y = 1;
           // s::cout<<"S\n";
-          direction = 2;
+          localDirection = 2;
         }
         else if(event.key.code == sf::Keyboard::A) {
           //delta_x = -1;
           // s::cout<<"A\n";
-          direction = 3;
+          localDirection = 3;
         }
         else if(event.key.code == sf::Keyboard::D) {
           //delta_x = 1;
           // s::cout<<"D\n";
-          direction = 4;
+          localDirection = 4;
         }
       }
     }
 
-    pacMan(direction);
+    if(check)
+      s::cout<<"Check 2\n";
 
+    pthread_mutex_lock(&lock1);   
+      direction = localDirection;
+    pthread_mutex_unlock(&waitForInput);
+    pthread_mutex_unlock(&lock1);
+
+    
+    
+    //pacMan(direction);
+
+    pthread_mutex_lock(&waitForPacMan);    
+    pthread_mutex_lock(&lock2);
+
+    // clear the screen
     window.clear(sf::Color::Black);
-
     // Display the grid
     for(int i = 0; i < height; ++i) {
       for(int j = 0; j < width; ++j) {
@@ -145,20 +199,33 @@ void userInterface() {
         // }
       }
     }
-
-      window.draw(pacManSprite);
-
-    // draw everything on the screen
-    // renders everything
+    // draw everything else on the screen
+    window.draw(pacManSprite);
+    // render everything
     window.display();
 
+    pthread_mutex_unlock(&lock2);
+
+    // add delay for the effect of FrameRate
     delay.restart();
     while(delay.getElapsedTime().asSeconds() < 0.1) {}
 
+    
+    if(check)
+      s::cout<<"Check 3\n";
 
   }
+s::cout<<"Hello\n";
+s::cout<<"World\n";
+for(int i = 0; i < 1; ++i)
+  pthread_cancel(pacManThread);
+    if(check)
+      s::cout<<"Check 4\n";
+  
+  // cancel all the remaining threads to stop the process
 
 
+  pthread_exit(NULL);
 }
 
 
