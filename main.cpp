@@ -1,10 +1,8 @@
 // Current Task
-// Step 1:
-// Add animation to the Pacman character
-// Step 2:
-// Add animation to the Ghost
-// Step 3:
-// Add the effect of blue and white for the Ghost
+// Remove Redundant Code
+// Add Relevant Comments
+// Replaces Code with Function wherever possible
+// make the declaration of the variables more seamless
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
@@ -27,22 +25,20 @@ sf::RectangleShape rectangle;
 sf::Texture pacManTex, pacManDeathTex, powerPelletTex, ghostTex, blueGhosts;
 sf::Sprite pacManSprite,pacManDeathSprite, powerPelletSprite[numOfPowerPellets], ghostSprite1;
 pthread_mutex_t waitForPacMan, waitForInput, waitForGameEngine, waitForDraw, waitForRender;
-pthread_mutex_t waitForGhost[1], waitForGameEngine1[1];
+pthread_mutex_t waitForGhost[1], waitForGameEngine1[1], powerPellet;
 
-pthread_mutex_t powerPellet;
-
-int direction = 0;
-int lives = 3;
+int direction = 0, lives = 3, currentPowerPellets = 0;
 bool powerUp = false;
 int readCount = 0;            // keeps track of the number of ghosts reading the maze at a time
 sem_t ghostMutex, mazeAccess; // semaphores used to address the Reader/Writer 
                               // scenario in the context of the PacMan and the Ghosts
-int currentPowerPellets = 0;
+
 int powerPelletLoc[numOfPowerPellets][2] = { {16,16},
                                              {26*16,16},
                                              {16,29*16},
                                              {26*16,29*16} };
-
+// boolean variables related to te functionality of the ghosts
+// to appear as blue and white when the pacman eats a power up
 bool initialState = true, blueGhostOnly = true;
 
 // the underlying 2D Maze
@@ -79,13 +75,15 @@ int maze[height][width] = {
   {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1},
   {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1} };  
 
-int cleanup_pop_arg = 0;
 
+// variable and class for testing ghostThreadCleanupHandler
+int cleanup_pop_arg = 0;
 class info {
 public:
   int i;
 };
 
+// function called when the ghost thread is cancelled
 void ghostThreadCleanupHandler(void* arg) {
   info* temp = (info*)arg;
   s::cout<<temp->i;
@@ -95,16 +93,13 @@ void ghostThreadCleanupHandler(void* arg) {
 }
 
 
-
 void* ghost(void* anything) {
 
   info* infoBlock = new info;
   infoBlock->i = 10;
 
+  // set the function to call when the ghost thread is cancelledS
   pthread_cleanup_push(ghostThreadCleanupHandler, infoBlock);
-  //pthread_cleanup_push_defer_np(ghostThreadCleanupHandler, NULL);
-
-  //pthread_cleanup_push(ghostThreadCleanupHandler, NULL);
   
   // set the relevant cancel states for the thread
   pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
@@ -121,8 +116,10 @@ void* ghost(void* anything) {
   //bool temp = false;
   int numOfMoves = 0, direction = 0, xPos, yPos, ghostSpriteFrame = 0;
   sf::Vector2f currPos;
-
-  int check = 0, blueGhostSpriteFrame = 0;
+  // variables used for the purpose of display blue and white ghosts when the pacman
+  // eats the power up
+  bool check = false;
+  int blueGhostSpriteFrame = 0;
 
   while(!exit_thread_flag) {
 
@@ -164,28 +161,30 @@ void* ghost(void* anything) {
       sem_wait(&mazeAccess);
     sem_post(&ghostMutex);
       
-    if(initialState == false && check == 0) {
+    // set the relevant textures for the Ghost Sprite
+    if(initialState == false && check == false) {
       ghostSprite1.setTexture(blueGhosts);
-      check = 1;
+      check = true;
     }
-    else if(initialState == true && check == 1) {
+    else if(initialState == true && check == true) {
       ghostSprite1.setTexture(ghostTex);
-      check = 0;
+      check = false;
     }
-
+    // set the relevant sprites for the Ghost Sprite
+    if(initialState == false) {
+      ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
+      if(blueGhostOnly) 
+        blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
+      else
+        blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
+    }
+    
     if(direction == 1) {
       if(maze[yPos-1][xPos] != 1) {
         ghostSprite1.move(0, -16);
         if(initialState) {
           ghostSprite1.setTextureRect(sf::IntRect(64 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
-        }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
         }
       }  
       else if(maze[yPos+1][xPos] != 1) {
@@ -194,26 +193,12 @@ void* ghost(void* anything) {
           ghostSprite1.setTextureRect(sf::IntRect(96 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
-        }
       }
       else if(maze[yPos][xPos-1] != 1) {
         ghostSprite1.move(-16, 0);
         if(initialState) {
           ghostSprite1.setTextureRect(sf::IntRect(32 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
-        }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
         }
       }
       else if(maze[yPos][xPos+1] != 1) {
@@ -222,13 +207,6 @@ void* ghost(void* anything) {
           ghostSprite1.setTextureRect(sf::IntRect(0 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;      
         } 
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
-        }
       }
     }
     else if(direction == 2) {
@@ -238,26 +216,12 @@ void* ghost(void* anything) {
           ghostSprite1.setTextureRect(sf::IntRect(96 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
-        }
       }
       else if(maze[yPos-1][xPos] != 1) {
         ghostSprite1.move(0, -16);
         if(initialState) {
           ghostSprite1.setTextureRect(sf::IntRect(64 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2; 
-        }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
         }
       }
       else if(maze[yPos][xPos-1] != 1) {
@@ -266,26 +230,12 @@ void* ghost(void* anything) {
           ghostSprite1.setTextureRect(sf::IntRect(32 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
-        }
       }
       else if(maze[yPos][xPos+1] != 1) {
         ghostSprite1.move(16, 0);
         if(initialState) { 
           ghostSprite1.setTextureRect(sf::IntRect(0 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
-        }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
         }
       }
     }
@@ -296,26 +246,12 @@ void* ghost(void* anything) {
           ghostSprite1.setTextureRect(sf::IntRect(32 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
-        }
       }
       else if(maze[yPos+1][xPos] != 1) {
         ghostSprite1.move(0, 16);
         if(initialState) { 
           ghostSprite1.setTextureRect(sf::IntRect(96 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
-        }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
         }
       }
       else if(maze[yPos-1][xPos] != 1) {
@@ -324,26 +260,12 @@ void* ghost(void* anything) {
           ghostSprite1.setTextureRect(sf::IntRect(64 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
-        }
       }
       else if(maze[yPos][xPos+1] != 1) {
         ghostSprite1.move(16, 0);       
         if(initialState) {
           ghostSprite1.setTextureRect(sf::IntRect(0 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
-        }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
         }
       }     
     }
@@ -354,26 +276,12 @@ void* ghost(void* anything) {
           ghostSprite1.setTextureRect(sf::IntRect(0 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
-        }
       }
       else if(maze[yPos+1][xPos] != 1) {
         ghostSprite1.move(0, 16);
         if(initialState) {
           ghostSprite1.setTextureRect(sf::IntRect(96 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
-        }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
         }
       }
       else if(maze[yPos-1][xPos] != 1) {
@@ -382,26 +290,12 @@ void* ghost(void* anything) {
           ghostSprite1.setTextureRect(sf::IntRect(64 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
-        }
       }
       else if(maze[yPos][xPos-1] != 1) {
         ghostSprite1.move(-16, 0);
         if(initialState) {
           ghostSprite1.setTextureRect(sf::IntRect(32 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
-        }
-        else {
-          ghostSprite1.setTextureRect(sf::IntRect(blueGhostSpriteFrame*16,0,16,16));
-          if(blueGhostOnly) 
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%2;
-          else
-            blueGhostSpriteFrame = (blueGhostSpriteFrame+1)%4;
         }
       }
     }
@@ -418,12 +312,12 @@ void* ghost(void* anything) {
       // if(!temp) {
       //   s::cout<<"Out of House\n";
       //   temp = true;
-      // }
+      //  }
     //}
     pthread_mutex_unlock(&waitForGhost[0]);
     pthread_mutex_lock(&waitForGameEngine1[0]);
   }
-  //int temp = 0;
+  // int temp = 0;
   // DO NOT REMOVE THE BELOW COUT STATEMENT
   // IT DOES NOT PRINT ANYTHING HOWEVER IT SOMEHOW PREVENTS A MASSIVE ERROR
   // IT SOMEHOW ENSURES THAT THE CLEAN UP ROUTINE RUNS PROPERLY
@@ -444,12 +338,13 @@ void* pacMan(void* anything) {
   pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
   // set the initial starting position
-  pacManSprite.setPosition(16,16);
-  // 
+  pacManSprite.setPosition(32,16);
+  // set the initial sprite
   pacManSprite.setTextureRect(sf::IntRect(16,16,16,16));
 
   int localDirection, xPos, yPos, spriteFrame = 0;
   sf::Vector2f currPos;
+  // To keep track of the time for the effect of the Power Pellet
   sf::Clock powerUpClock;
 
   while(!exit_thread_flag) {
@@ -505,23 +400,22 @@ void* pacMan(void* anything) {
       if(currentPowerPellets > 0) {
         for(int i = 0; i < numOfPowerPellets; ++i) {
           
-          sf::Vector2f temp1 = powerPelletSprite[i].getPosition();
-          sf::Vector2f temp2 = pacManSprite.getPosition();
-        
-          if(temp1.x == temp2.x && temp1.y == temp2.y) {
-          //if(powerPelletSprite[i].getPosition() == pacManSprite.getPosition()) {
+          if(powerPelletSprite[i].getPosition() == pacManSprite.getPosition()) {
+            
+            // reset the power pellet position after consuming it
             powerPelletSprite[i].setPosition(-10, -10);
             s::cout<<"Power Pellet Acquired\n";        
+            // consume the power pellet
             powerUp = true;
             --currentPowerPellets;
             powerUpClock.restart();
-            break;
+            
+            break;          
           }
         }
 
       }      
       pthread_mutex_unlock(&powerPellet);
-      // unlock
     }
     else {
       if(powerUpClock.getElapsedTime().asSeconds() > 10) {
@@ -561,7 +455,7 @@ void collisionAnimation() {
     pacManDeathSprite.setTextureRect(sf::IntRect(i*16,0,16,16));
     window.draw(pacManDeathSprite);
     window.display();
-    // add delay to add the effect fof frame-rates 
+    // add delay to add the effect of frame-rates 
     delay.restart();
     while(delay.getElapsedTime().asSeconds() < 0.1) {};
   }
@@ -614,21 +508,26 @@ void* gameEngine(void* anything) {
   sf::Clock delayClock, powerPelletGeneratorTimer, blueGhostTimer1, blueGhostTimer2;
   sf::Vector2f pacManPos, ghostPos, temp(-10,-10);
 
-  bool restart = false, ghostDead = false;
+  bool restart = false, ghostDead = false, blueGhostSprite = false;
   int powerPelletPos = 0;     // points to the first power pellet that has to be created 
   
-  bool blueGhostSprite = false;
-
   while(!exit_thread_flag) {
 
+    // generate power pellets at set intervals
     if(powerPelletGeneratorTimer.getElapsedTime().asSeconds() > 6) {
       pthread_mutex_lock(&powerPellet);
+      // if more power pellets can be produced
       if(currentPowerPellets < numOfPowerPellets) {
-        ++currentPowerPellets;
+        // since the pacman can eat the power pellets in any order
+        // hence we have to linearly check for the first free power pellet slot
         for(int i = 0; i < numOfPowerPellets; ++i) {
+          // use the (-10, -10) position of a power pellet sprite as a 
+          // reference to check whether it can be produced or not
           if(powerPelletSprite[powerPelletPos].getPosition() == temp) {
+            // set the corresponding position with respect to main maze grid
             powerPelletSprite[powerPelletPos].setPosition(powerPelletLoc[powerPelletPos][0], powerPelletLoc[powerPelletPos][1]);
             powerPelletPos = (powerPelletPos+1)%numOfPowerPellets;
+            // reset the timer for next power pellet generation
             powerPelletGeneratorTimer.restart();
             ++currentPowerPellets;
             break;
@@ -665,8 +564,6 @@ void* gameEngine(void* anything) {
       ghostDead = false;
     }
     
-//powerUp &&
-
     // wait for the PacMan thread to execute
     pthread_mutex_lock(&waitForPacMan);
 
@@ -674,15 +571,22 @@ void* gameEngine(void* anything) {
     for(int i = 0; i < ghostCount; ++i)
       pthread_mutex_lock(&waitForGhost[i]);
 
+    // conditionals enabling to create the animation of blue and white ghosts 
+    // when the pacman picks up a power up
+    // this conditional occurs when the pacman pick ups a power up
+    // the ghosts become blue
     if(powerUp && initialState) {
       initialState = false;
       blueGhostTimer1.restart();
-      //blueGhostOnly = true;
     }
+    // this conditional runs 5 secs after the pacman has eaten a power pellet
+    // allows to show blue and white ghosts
     else if(powerUp && blueGhostTimer1.getElapsedTime().asSeconds() > 5 && !initialState && blueGhostOnly) {
       blueGhostTimer2.restart();
       blueGhostOnly = false;
     }
+    // this conditional runs 10 secs after the pacman has eaten a power pellet
+    // also the ghost to go back to its original sprite
     else if(blueGhostTimer2.getElapsedTime().asSeconds() > 5 && !initialState && !blueGhostOnly) {
       initialState = true;
       blueGhostOnly = true;
@@ -692,17 +596,23 @@ void* gameEngine(void* anything) {
     pacManPos = pacManSprite.getPosition();
     for(int i = 0; i < ghostCount; ++i) {
       if(pacManPos == ghostSprite1.getPosition()) {
+        
         // destroy the Ghost Threads
         pthread_cancel(ghostThread1);
         ghostDead = true;
+        
+        // if the pacman has a power up enabled then only destroy the ghost
         if(powerUp)
           break;
+
         // destroy the PacMan Threads
         pthread_cancel(pacManThread);
-        //s::cout<<"Collision Check\n";
+        
         --lives;
+        
         collisionAnimation();
         // exit all the threads if no lives left
+        
         if(lives == 0) 
           exit_thread_flag = true;
         restart = true;
