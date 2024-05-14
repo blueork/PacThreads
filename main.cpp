@@ -1,16 +1,8 @@
 // Current Task
-// Multiple Ghost Functionality
 // Step 1:
-// Generate and Display multiple ghosts
-// ensure correct sprites are displayed
+// Add Boosts for the Ghosts
 // Step 2:
-// Ensure collision detection works with each ghost
-// Step 3:
-// Ensure that the ghosts are created, cancelled correctly
-// Step 4:
-// Ensure that they turn blue and white when required
-// Step 5:
-// Enjoy 
+// Solve Scenario 4
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
@@ -35,8 +27,9 @@ sf::Texture pacManTex, pacManDeathTex, powerPelletTex, ghostTex[numOfGhosts], bl
 sf::Sprite pacManSprite,pacManDeathSprite, powerPelletSprite[numOfPowerPellets], ghostSprite[numOfGhosts];
 pthread_mutex_t waitForPacMan, waitForInput, waitForGameEngine, waitForDraw, waitForRender;
 pthread_mutex_t waitForGhost[numOfGhosts], waitForGameEngine1[numOfGhosts], powerPellet;
+pthread_mutex_t consumeBoost;
 
-int direction = 0, lives = 3, currentPowerPellets = 0;
+int direction = 0, lives = 3, currentPowerPellets = 0, numOfBoosts = 2;
 bool powerUp = false;
 int readCount = 0;            // keeps track of the number of ghosts reading the maze at a time
 sem_t ghostMutex, mazeAccess; // semaphores used to address the Reader/Writer 
@@ -52,7 +45,7 @@ int ghostStartingLoc[numOfGhosts][2] = {{10*16,12*16},
                                         {17*16,12*16},
                                         {17*16,18*16} };                                             
 // boolean variables related to te functionality of the ghosts
-// to appear as blue and white when the pacman eats a power up
+// appearing as blue and white when the pacman eats a power up
 bool initialState = true, blueGhostOnly = true;
 
 // the underlying 2D Maze
@@ -91,40 +84,63 @@ int maze[height][width] = {
 
 
 // variable and class for testing ghostThreadCleanupHandler
-int cleanup_pop_arg = 0;
-class info {
+// int cleanup_pop_arg = 0;
+// class info {
+// public:
+//   int i;
+// };
+
+class info1 {
 public:
-  int i;
+  int ghostNum;
+  bool hasBoost = false; 
 };
 
 // function called when the ghost thread is cancelled
 void ghostThreadCleanupHandler(void* arg) {
-  info* temp = (info*)arg;
-  s::cout<<temp->i;
-  s::cout<<"In Ghost Thread Cleanup Handler\n";
+  info1* temp = (info1*)arg;
+  if(temp != NULL) {
+    if(temp->hasBoost == true) {
+      pthread_mutex_lock(&consumeBoost);
+        s::cout<<"In the Cleanup Handler of the "<<temp->ghostNum<<" Ghost\n";
+        s::cout<<"Freeing up the Boost\n";
+        ++numOfBoosts;
+      pthread_mutex_unlock(&consumeBoost);
+    }
+    //s::cout<<"Hello World";
+    delete temp;
+    temp = NULL;
+  }
+  //s::cout<<temp->i;
+  //s::cout<<"In Ghost Thread Cleanup Handler\n";
+  
+  
   //delete temp;
   //temp = NULL;
   //s::cout<<((*info)arg)->i;
   return;
 }
 
-class info1 {
-public:
-  int ghostNum;
-};
 
+
+void ghostMvmt() {
+
+}
 
 void* ghost(void* anything) {
 
-  info1* temp1 = (info1*)anything;
-  int ghostNum = temp1->ghostNum;
-  delete temp1;
-  temp1 = NULL; 
-  info* infoBlock = new info;
-  infoBlock->i = 10;
+  // info1* temp1 = (info1*)anything;
+  // int ghostNum = temp1->ghostNum;
+  //delete temp1;
+  //emp1 = NULL; 
+  //info* infoBlock = new info;
+  //infoBlock->i = 10;
 
   // set the function to call when the ghost thread is cancelledS
-  pthread_cleanup_push(ghostThreadCleanupHandler, infoBlock);
+  pthread_cleanup_push(ghostThreadCleanupHandler, anything);
+
+  info1* temp1 = (info1*)anything;
+  int ghostNum = temp1->ghostNum;
 
   // set the relevant cancel states for the thread
   pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
@@ -143,8 +159,10 @@ void* ghost(void* anything) {
   sf::Vector2f currPos;
   // variables used for the purpose of display blue and white ghosts when the pacman
   // eats the power up
-  bool check = false;
+  bool check = false, hasBoost = false;
   int blueGhostSpriteFrame = 0;
+
+
 
   while(!exit_thread_flag) {
 
@@ -163,7 +181,18 @@ void* ghost(void* anything) {
 
     // }
     // else {
-      
+
+    if(!hasBoost) {
+      pthread_mutex_lock(&consumeBoost);
+      if(numOfBoosts > 0) {
+        hasBoost = true;
+        --numOfBoosts;
+        temp1->hasBoost = 1;
+        s::cout<<"Ghost "<<temp1->ghostNum<<" has acquired the boost\n";
+      }
+      pthread_mutex_unlock(&consumeBoost);
+    }
+
     // basic Movement Generator for the Ghost
     if(numOfMoves == 0) {
       numOfMoves = (rand()%5) + 1;
@@ -205,124 +234,357 @@ void* ghost(void* anything) {
     }
     
     if(direction == 1) {
+    
       if(maze[yPos-1][xPos] != 1) {
         ghostSprite[ghostNum].move(0, -16);
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+          else if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+        }
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(64 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }  
+    
       else if(maze[yPos+1][xPos] != 1) {
         ghostSprite[ghostNum].move(0, 16);
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+          else if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+        }
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(96 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }
+    
       else if(maze[yPos][xPos-1] != 1) {
         ghostSprite[ghostNum].move(-16, 0);
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+          else if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+        }
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(32 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }
+    
       else if(maze[yPos][xPos+1] != 1) {
         ghostSprite[ghostNum].move(16, 0);
+        
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+          else if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+        }
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(0 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;      
         } 
       }
+    
     }
+    
     else if(direction == 2) {
+    
       if(maze[yPos+1][xPos] != 1) {
         ghostSprite[ghostNum].move(0, 16);
+        
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+          else if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+        }        
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(96 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }
+    
       else if(maze[yPos-1][xPos] != 1) {
         ghostSprite[ghostNum].move(0, -16);
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+          else if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+        }
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(64 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2; 
         }
       }
+    
       else if(maze[yPos][xPos-1] != 1) {
         ghostSprite[ghostNum].move(-16, 0);
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+          else if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+        }
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(32 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }
+    
       else if(maze[yPos][xPos+1] != 1) {
         ghostSprite[ghostNum].move(16, 0);
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+          else if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+        }
         if(initialState) { 
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(0 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }
+    
     }
+
     else if(direction == 3) {
+
       if(maze[yPos][xPos-1] != 1) {
         ghostSprite[ghostNum].move(-16, 0);
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+          else if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+        }
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(32 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }
+
       else if(maze[yPos+1][xPos] != 1) {
         ghostSprite[ghostNum].move(0, 16);
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+          else if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+        }
         if(initialState) { 
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(96 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }
+
       else if(maze[yPos-1][xPos] != 1) {
         ghostSprite[ghostNum].move(0, -16);
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+          else if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+        }
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(64 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }
+
       else if(maze[yPos][xPos+1] != 1) {
         ghostSprite[ghostNum].move(16, 0);       
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+          else if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+        }
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(0 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }     
+    
     }
+
     else if(direction == 4) {
+
       if(maze[yPos][xPos+1] != 1) {
         ghostSprite[ghostNum].move(16, 0);
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+          else if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+        }
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(0 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }
+
       else if(maze[yPos+1][xPos] != 1) {
         ghostSprite[ghostNum].move(0, 16);
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+          else if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+        }
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(96 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }
+
       else if(maze[yPos-1][xPos] != 1) {
         ghostSprite[ghostNum].move(0, -16);
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+          else if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+        }
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(64 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }
+
       else if(maze[yPos][xPos-1] != 1) {
         ghostSprite[ghostNum].move(-16, 0);
+        if(hasBoost == true) {
+          currPos = ghostSprite[ghostNum].getPosition();
+          xPos = (currPos.x/16); 
+          yPos = (currPos.y/16);
+          if(maze[yPos][xPos-1] != 1)
+            ghostSprite[ghostNum].move(-16, 0);
+          else if(maze[yPos+1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, 16);
+          else if(maze[yPos-1][xPos] != 1) 
+            ghostSprite[ghostNum].move(0, -16);
+          else if(maze[yPos][xPos+1] != 1)
+            ghostSprite[ghostNum].move(16, 0);
+        }
         if(initialState) {
           ghostSprite[ghostNum].setTextureRect(sf::IntRect(32 + 16*ghostSpriteFrame,0,16,16));
           ghostSpriteFrame = (ghostSpriteFrame+1)%2;
         }
       }
+    
     }
 
     sem_wait(&ghostMutex);
@@ -342,13 +604,27 @@ void* ghost(void* anything) {
     pthread_mutex_unlock(&waitForGhost[ghostNum]);
     pthread_mutex_lock(&waitForGameEngine1[ghostNum]);
   }
+  if(hasBoost == true) {
+    pthread_mutex_lock(&consumeBoost);
+    hasBoost = false;
+    ++numOfBoosts;
+    s::cout<<"Game is closing down. Ghost "<<ghostNum<<" is freeing up the boost accordingly\n";
+    pthread_mutex_unlock(&consumeBoost);
+  }
+
+  if(temp1 != NULL) {      
+    delete temp1;
+    temp1 = NULL;
+    //s::cout<<"Free up DMA";   
+  }
   // int temp = 0;
   // DO NOT REMOVE THE BELOW COUT STATEMENT
   // IT DOES NOT PRINT ANYTHING HOWEVER IT SOMEHOW PREVENTS A MASSIVE ERROR
   // IT SOMEHOW ENSURES THAT THE CLEAN UP ROUTINE RUNS PROPERLY
-  s::cout<<"Here\n";
+  s::cout<<"Here\n"; 
   // pthread_cleanup_pop(cleanup_pop_arg);
-  pthread_cleanup_pop(1);
+  pthread_cleanup_pop(0);
+  s::cout<<"Do we reach here in case of pop";
   pthread_exit(NULL);
 }
 
@@ -511,6 +787,7 @@ void* gameEngine(void* anything) {
   }
 
   pthread_mutex_init(&powerPellet, NULL);
+  pthread_mutex_init(&consumeBoost, NULL);
 
   // initialize thread attributes
   pthread_attr_t attr;
@@ -582,7 +859,6 @@ void* gameEngine(void* anything) {
         s::cout<<"Error unable to create PacMan thread. Exiting\n";
         exit(-1);
       }
-      s::cout<<"We Here\n";
       info1* temp;  
       for(int i = 0; i < numOfGhosts; ++i) {
         temp = new info1;
@@ -710,11 +986,16 @@ void* gameEngine(void* anything) {
     pthread_mutex_destroy(&waitForGameEngine1[i]); 
   }
   pthread_mutex_destroy(&powerPellet);
+  pthread_mutex_destroy(&consumeBoost);
+
+  // 
+  
 
   // destroy the semaphores initialized within the Game Engine Thread
   sem_destroy(&ghostMutex);
   sem_destroy(&mazeAccess);
 
+  s::cout<<"Checking if the Game Engine Perfroms all the execution\n";
   // exit the thread
   pthread_exit(NULL);
 }
