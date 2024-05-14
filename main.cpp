@@ -1,5 +1,5 @@
 // Current Task
-// Take mouse based input in all menus
+// Adjust Semaphores and mutexes
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
@@ -18,10 +18,7 @@ const int numOfGhosts = 4;
 const int coins = 7;
 
 // Declare all the Global Variables here for the all the threads to access
-std::atomic<bool> exit_thread_flag{false};
-std::atomic<bool> gameWon{false};
-std::atomic<bool> gameOver{false};
-std::atomic<bool> pauseGame{false};
+std::atomic<bool> exit_thread_flag{false}, gameWon{false}, gameOver{false}, pauseGame{false};
 
 sf::RenderWindow window;
 sf::RectangleShape rectangle;
@@ -32,9 +29,9 @@ sf::Texture mainMenuTex, rectTex;
 sf::Sprite pacManSprite,pacManDeathSprite, powerPelletSprite[numOfPowerPellets], ghostSprite[numOfGhosts];
 sf::Sprite pacManLifeSprite, mainMenuSprite, ghostHouseSprite, coinSprite;
 
-pthread_mutex_t waitForPacMan, waitForInput, waitForGameEngine, waitForDraw, waitForRender;
-pthread_mutex_t waitForGhost[numOfGhosts], waitForGameEngine1[numOfGhosts], powerPellet, consumeBoost;
-pthread_mutex_t permitCheck;
+//pthread_mutex_t waitForRender, waitForPacMan, waitForGameEngine, waitForInput, waitForDraw;
+// pthread_mutex_t waitForGhost[numOfGhosts], waitForGameEngine1[numOfGhosts],
+pthread_mutex_t powerPellet, consumeBoost, permitCheck;
 
 int numOfPermits, numOfKeys, direction, lives, currentPowerPellets, numOfBoosts, coinsPickedUp, currScore;
 bool powerUp = false;
@@ -44,6 +41,8 @@ int readCount = 0;      // keeps track of the number of ghosts reading the maze 
 // appearing as blue and white when the pacman eats a power up
 bool initialState = true, blueGhostOnly = true;
 
+sem_t waitForInput, waitForPacMan, waitForGameEngine, waitForDraw, waitForRender;
+sem_t waitForGhost[numOfGhosts], waitForGameEngine1[numOfGhosts];
 sem_t ghostMutex, mazeAccess; // semaphores used to address the Reader/Writer 
                               // scenario in the context of the PacMan and the Ghosts
 
@@ -168,12 +167,14 @@ void* ghost(void* anything) {
               --numOfPermits;
               havePermit = true;
               temp1->hasPermit = true;
+              s::cout<<"Ghost "<<temp1->ghostNum<<" has picked up a permit\n";
             }
             // then check if the current ghost needs a key
             if(numOfKeys > 0 && haveKey == false) {
               --numOfKeys;
               haveKey = true;
               temp1->hasKey = true;
+              s::cout<<"Ghost "<<temp1->ghostNum<<" has picked up a key\n";
             }  
           }
         pthread_mutex_unlock(&permitCheck);
@@ -185,6 +186,7 @@ void* ghost(void* anything) {
           ++numOfPermits;
           ++numOfKeys;
           temp1->hasPermit = temp1->hasKey = false;
+          s::cout<<"Ghost "<<temp1->ghostNum<<" has given up the permit and key\n";
         pthread_mutex_unlock(&permitCheck);
       }
 
@@ -195,7 +197,7 @@ void* ghost(void* anything) {
           hasBoost = true;
           --numOfBoosts;
           temp1->hasBoost = 1;
-          //s::cout<<"Ghost "<<temp1->ghostNum<<" has acquired the boost\n";
+          s::cout<<"Ghost "<<temp1->ghostNum<<" has acquired the boost\n";
         }
         pthread_mutex_unlock(&consumeBoost);
       }
@@ -674,8 +676,8 @@ void* ghost(void* anything) {
         //  }
       //}
     }
-    pthread_mutex_unlock(&waitForGhost[ghostNum]);
-    pthread_mutex_lock(&waitForGameEngine1[ghostNum]);
+    sem_post(&waitForGhost[ghostNum]);
+    sem_wait(&waitForGameEngine1[ghostNum]);
   
   }
   if(hasBoost == true) {
@@ -751,7 +753,7 @@ void* pacMan(void* anything) {
 
     // wait for the UI Thread to Update the value of direction 
     // with respect to the input
-    pthread_mutex_lock(&waitForInput);
+    sem_wait(&waitForInput);
         
     localDirection = direction;
     if(localDirection) {
@@ -764,7 +766,7 @@ void* pacMan(void* anything) {
       
       sem_wait(&mazeAccess);
       if(direction == 1) {
-        if(maze[yPos-1][xPos] != 1) {
+        if(maze[yPos-1][xPos] != 1 && maze[yPos-1][xPos] != 2) {
           if(maze[yPos-1][xPos] == 4) {
             ++coinsPickedUp;
             maze[yPos-1][xPos] = 0;
@@ -776,7 +778,7 @@ void* pacMan(void* anything) {
         }
       }
       else if(direction == 2) {
-        if(maze[yPos+1][xPos] != 1) {
+        if(maze[yPos+1][xPos] != 1 && maze[yPos+1][xPos] != 2 ) {
           if(maze[yPos+1][xPos] == 4) {
             ++coinsPickedUp;
             maze[yPos+1][xPos] = 0;
@@ -788,7 +790,7 @@ void* pacMan(void* anything) {
         }
       }
       else if(direction == 3) {
-        if(maze[yPos][xPos-1] != 1) {
+        if(maze[yPos][xPos-1] != 1 && maze[yPos][xPos-1] != 2 ) {
           if(maze[yPos][xPos-1] == 4) {
             ++coinsPickedUp;
             maze[yPos][xPos-1] = 0;
@@ -800,7 +802,7 @@ void* pacMan(void* anything) {
         }
       }
       else if(direction == 4) {
-        if(maze[yPos][xPos+1] != 1) {
+        if(maze[yPos][xPos+1] != 1 && maze[yPos][xPos+1] != 2) {
           if(maze[yPos][xPos+1] == 4) {
             ++coinsPickedUp;
             maze[yPos][xPos+1] = 0;
@@ -845,7 +847,7 @@ void* pacMan(void* anything) {
     }
 
     // signal the game engine thread that it can proceed further
-    pthread_mutex_unlock(&waitForPacMan);
+    sem_post(&waitForPacMan);
   }
   pthread_exit(NULL);
 }
@@ -896,16 +898,16 @@ void* gameEngine(void* anything) {
   sem_init(&ghostMutex, 0, 1);
   sem_init(&mazeAccess, 0, 1);
 
-  pthread_mutex_init(&waitForPacMan, NULL);
-  pthread_mutex_lock(&waitForPacMan);
+  sem_init(&waitForPacMan, 0, 1);
+  sem_wait(&waitForPacMan);
   
   for(int i = 0; i < numOfGhosts; ++i) {
-    pthread_mutex_init(&waitForGhost[i], NULL);
-    pthread_mutex_lock(&waitForGhost[i]);
-  }
-  for(int i = 0; i < numOfGhosts; ++i) {
-    pthread_mutex_init(&waitForGameEngine1[i], NULL);
-    pthread_mutex_lock(&waitForGameEngine1[i]);
+    sem_init(&waitForGhost[i], 0, 1);
+    sem_wait(&waitForGhost[i]);
+  //}
+  //for(int i = 0; i < numOfGhosts; ++i) {
+    sem_init(&waitForGameEngine1[i], 0, 1);
+    sem_wait(&waitForGameEngine1[i]);
   }
 
   pthread_mutex_init(&powerPellet, NULL);
@@ -1016,11 +1018,11 @@ void* gameEngine(void* anything) {
     }
     
     // wait for the PacMan thread to execute
-    pthread_mutex_lock(&waitForPacMan);
+    sem_wait(&waitForPacMan);
 
     // wait for the Ghost Threads to Execute
     for(int i = 0; i < numOfGhosts; ++i)
-      pthread_mutex_lock(&waitForGhost[i]);
+      sem_wait(&waitForGhost[i]);
 
     // conditionals enabling to create the animation of blue and white ghosts 
     // when the pacman picks up a power up
@@ -1053,7 +1055,7 @@ void* gameEngine(void* anything) {
     // check for collision in-between PacMan and Ghost
     pacManPos = pacManSprite.getPosition();
     for(int i = 0; i < numOfGhosts && !gameWon; ++i) {
-      if(pacManPos == ghostSprite[i].getPosition()) {
+      if( (pacManPos == ghostSprite[i].getPosition()) || pacManSprite.getGlobalBounds().intersects(ghostSprite[i].getGlobalBounds())) {
         
         // destroy the Ghost Threads
         pthread_cancel(ghostThread[i]);
@@ -1089,14 +1091,11 @@ void* gameEngine(void* anything) {
       }
     }
 
-
-     
-
     // signal the ui thread that it can draw the final sprites on to the screen
-    pthread_mutex_unlock(&waitForGameEngine);
+    sem_post(&waitForGameEngine);
     
     // wait for the ui thread to draw each sprite on to the screen
-    pthread_mutex_lock(&waitForDraw);
+    sem_wait(&waitForDraw);
     
     // render everything on to the screen
     window.display();
@@ -1106,46 +1105,40 @@ void* gameEngine(void* anything) {
     while(delayClock.getElapsedTime().asSeconds() < 0.11) {};
     
     // signal the ui thread that everything has been rendered
-    pthread_mutex_unlock(&waitForRender);
+    sem_post(&waitForRender);
+    
     // signal the Ghost Thread to continue execution
     for(int i = 0; i < numOfGhosts; ++i)
-      pthread_mutex_unlock(&waitForGameEngine1[i]);
+      sem_post(&waitForGameEngine1[i]);
   }
 
   // destroy thread attributes
   pthread_attr_destroy(&attr);
   
   // destroy the mutexes initialized within the Game Engine Thread
-  pthread_mutex_destroy(&waitForInput);
-  pthread_mutex_destroy(&waitForPacMan);
   for(int i = 0; i < numOfGhosts; ++i) {
-    pthread_mutex_destroy(&waitForGhost[i]);
-    pthread_mutex_destroy(&waitForGameEngine1[i]); 
+    sem_destroy(&waitForGhost[i]);
+    sem_destroy(&waitForGameEngine1[i]); 
   }
   pthread_mutex_destroy(&powerPellet);
   pthread_mutex_destroy(&consumeBoost);
   pthread_mutex_destroy(&permitCheck);
   
   // destroy the semaphores initialized within the Game Engine Thread
+  sem_destroy(&waitForPacMan);
   sem_destroy(&ghostMutex);
   sem_destroy(&mazeAccess);
 
+  // join with the exited ghost threads ensures that all threads exit properly
   for(int i = 0; i < numOfGhosts; ++i)
     pthread_join(ghostThread[i], NULL);
 
+  // join with the exited pacman thread
   pthread_join(pacManThread, NULL);
 
-  s::cout<<"Checking if the Game Engine Performs all the execution\n";
+  // s::cout<<"Checking if the Game Engine Performs all the execution\n";
   // exit the thread
   pthread_exit(NULL);
-}
-
-// destroy all the mutexes used within the entire process
-void destroyMutexes() {
-  pthread_mutex_destroy(&waitForGameEngine);
-  pthread_mutex_destroy(&waitForDraw);
-  pthread_mutex_destroy(&waitForInput);
-  pthread_mutex_destroy(&waitForRender);
 }
 
 // load the textures
@@ -1366,18 +1359,18 @@ void mainUserInterface() {
       // initialize the global variables with the default values
       initDefault();
 
-      // initialize threads and lock them according to game logic
-      pthread_mutex_init(&waitForInput, NULL);
-      pthread_mutex_lock(&waitForInput);
+      // initialize semaphores and mutexes and lock them according to game logic
+      sem_init(&waitForInput, 0, 1);
+      sem_wait(&waitForInput);
       
-      pthread_mutex_init(&waitForGameEngine, NULL);
-      pthread_mutex_lock(&waitForGameEngine);
+      sem_init(&waitForGameEngine, 0, 1);
+      sem_wait(&waitForGameEngine);
       
-      pthread_mutex_init(&waitForDraw, NULL);
-      pthread_mutex_lock(&waitForDraw);
+      sem_init(&waitForDraw, 0, 1);
+      sem_wait(&waitForDraw);
 
-      pthread_mutex_init(&waitForRender, NULL);
-      pthread_mutex_lock(&waitForRender);
+      sem_init(&waitForRender, 0, 1);
+      sem_wait(&waitForRender);
 
       int rc;
      
@@ -1405,8 +1398,8 @@ void mainUserInterface() {
         while(window.pollEvent(event)) {
           if(event.type == sf::Event::Closed) {
             window.close();
-            pthread_mutex_unlock(&waitForInput);
-            pthread_mutex_unlock(&waitForDraw);
+            sem_post(&waitForInput);
+            sem_post(&waitForDraw);
             gameStart = false;
             exit_thread_flag = true; 
           }
@@ -1430,8 +1423,8 @@ void mainUserInterface() {
                 pauseGame = true;
             }
             else if(event.key.code == sf::Keyboard::R) {
-              pthread_mutex_unlock(&waitForInput);
-              pthread_mutex_unlock(&waitForDraw);
+              sem_post(&waitForInput);
+              sem_post(&waitForDraw);
               exit_thread_flag = true;
               gameStart = true;
               resetGame = true;
@@ -1452,18 +1445,18 @@ void mainUserInterface() {
 
         // signal the PacMan thread that the update value
         // has been written into the direction variable
-        pthread_mutex_unlock(&waitForInput);
+        sem_post(&waitForInput);
         
         // waiting for the gameEngine to coordinate in-between the 
         // PacMan and the Ghosts
-        pthread_mutex_lock(&waitForGameEngine);    
+        sem_wait(&waitForGameEngine);    
 
         if(exit_thread_flag) {
           //window.close();
           //displayMainMenu = true;
           gameStart = false;
-          pthread_mutex_unlock(&waitForInput);
-          pthread_mutex_unlock(&waitForDraw);
+          sem_post(&waitForInput);
+          sem_post(&waitForDraw);
           break;
         }
 
@@ -1503,20 +1496,24 @@ void mainUserInterface() {
 
         // ensures that the game engine can now render, after 
         // the relevant sprites have been draw on the window
-        pthread_mutex_unlock(&waitForDraw);
+        sem_post(&waitForDraw);
         
         // ensures that the game engine has rendered everything 
         // before continuing further execution
-        pthread_mutex_lock(&waitForRender);
+        sem_wait(&waitForRender);
       }
 
       pthread_join(gameEngineThread, NULL);
 
       // destroy thread attributes
       pthread_attr_destroy(&attr);
-      // destroy the mutexes initialized above  
-      destroyMutexes();
-    
+
+      // destroy the semaphores initialized above      
+      sem_destroy(&waitForInput);
+      sem_destroy(&waitForGameEngine);
+      sem_destroy(&waitForDraw);
+      sem_destroy(&waitForRender);
+
     }
 
     // screen to display when the user has won the game
