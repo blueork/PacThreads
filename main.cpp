@@ -1,15 +1,19 @@
 // Current Task
-// Multi-Thread the PacMan
+// Closing the UI Thread causes rest of the threads to exit as well
 #include <iostream>
 #include <SFML/Graphics.hpp>
 #include <pthread.h>
+#include <atomic>
+
 
 #define s std
 #define height 31
 #define width 28
 
+
 // Declare all the Global Variables here for the all the threads to access
 // the underlying 2D Maze
+std::atomic<bool> exit_thread_flag{false};
 sf::RenderWindow window;
 sf::Texture pacManTex;
 sf::Sprite pacManSprite;
@@ -57,10 +61,9 @@ int maze[height][width] = {
 
 void* pacMan(void* anything) {
 
-  pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
   int localDirection;
 
-  while(true) {
+  while(!exit_thread_flag) {
 
     pthread_mutex_lock(&waitForInput);
     pthread_mutex_lock(&lock1);      
@@ -96,6 +99,7 @@ void* pacMan(void* anything) {
     pthread_mutex_unlock(&lock2);
     
   }
+  pthread_exit(NULL);
 }
 
 // the userInterface thread
@@ -136,48 +140,38 @@ void userInterface() {
   int localDirection = 0;
   // to check for user inputs
   sf::Event event;
-  bool check = false;
   while(window.isOpen()) {
 
     while(window.pollEvent(event)) {
       if(event.type == sf::Event::Closed) {
-        window.close(); 
-        s::cout<<"check1\n";
-        check = true;
+        window.close();
+        pthread_mutex_unlock(&waitForInput);
+        exit_thread_flag = true; 
       }
       if(event.type == sf::Event::KeyPressed) {
         if(event.key.code == sf::Keyboard::W) {
-          //delta_y = -1;
           // s::cout<<"W\n";
           localDirection = 1;
         }
         else if(event.key.code == sf::Keyboard::S) {
-          // delta_y = 1;
           // s::cout<<"S\n";
           localDirection = 2;
         }
         else if(event.key.code == sf::Keyboard::A) {
-          //delta_x = -1;
           // s::cout<<"A\n";
           localDirection = 3;
         }
         else if(event.key.code == sf::Keyboard::D) {
-          //delta_x = 1;
           // s::cout<<"D\n";
           localDirection = 4;
         }
       }
     }
 
-    if(check)
-      s::cout<<"Check 2\n";
-
     pthread_mutex_lock(&lock1);   
       direction = localDirection;
     pthread_mutex_unlock(&waitForInput);
     pthread_mutex_unlock(&lock1);
-
-    
     
     //pacMan(direction);
 
@@ -209,23 +203,8 @@ void userInterface() {
     // add delay for the effect of FrameRate
     delay.restart();
     while(delay.getElapsedTime().asSeconds() < 0.1) {}
-
-    
-    if(check)
-      s::cout<<"Check 3\n";
-
   }
-s::cout<<"Hello\n";
-s::cout<<"World\n";
-for(int i = 0; i < 1; ++i)
-  pthread_cancel(pacManThread);
-    if(check)
-      s::cout<<"Check 4\n";
-  
-  // cancel all the remaining threads to stop the process
 
-
-  pthread_exit(NULL);
 }
 
 
@@ -239,10 +218,10 @@ int main() {
   // assign the PacMan sprite the correct texture
   pacManSprite.setTextureRect(sf::IntRect(16,0,16,16));
   pacManSprite.setPosition(16, 16);
-
+  // set the initial starting position
   pacManSprite.setPosition(16,16);
+  
   userInterface();
-
-
+ 
   return 0;
 }
