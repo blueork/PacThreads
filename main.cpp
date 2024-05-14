@@ -1,8 +1,5 @@
 // Current Task
-// Remove Redundant Code
-// Add Relevant Comments
-// Replaces Code with Function wherever possible
-// make the declaration of the variables more seamless
+// Destroy the Mutexes and Semaphores within the Threads they are initialized 
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
@@ -468,9 +465,9 @@ void collisionAnimation() {
 void* gameEngine(void* anything) {
 
   int ghostCount = 1;
-
-  pthread_mutex_init(&waitForInput, NULL);
-  pthread_mutex_lock(&waitForInput);
+  
+  sem_init(&ghostMutex, 0, 1);
+  sem_init(&mazeAccess, 0, 1);
 
   pthread_mutex_init(&waitForPacMan, NULL);
   pthread_mutex_lock(&waitForPacMan);
@@ -643,7 +640,15 @@ void* gameEngine(void* anything) {
   pthread_attr_destroy(&attr);
   
   // destroy the mutexes initialized within the Game Engine Thread
+  pthread_mutex_destroy(&waitForInput);
+  pthread_mutex_destroy(&waitForPacMan);
+  pthread_mutex_destroy(&waitForGhost[0]);
+  pthread_mutex_destroy(&waitForGameEngine1[0]);
   pthread_mutex_destroy(&powerPellet);
+
+  // destroy the semaphores initialized within the Game Engine Thread
+  sem_destroy(&ghostMutex);
+  sem_destroy(&mazeAccess);
 
   // exit the thread
   pthread_exit(NULL);
@@ -738,18 +743,12 @@ void userInterface() {
 
 }
 
-// destroy all the semaphores used within the entire process
-void destroySema() {
-  sem_destroy(&ghostMutex);
-  sem_destroy(&mazeAccess);
-}
 
 // destroy all the mutexes used within the entire process
 void destroyMutexes() {
   pthread_mutex_destroy(&waitForGameEngine);
   pthread_mutex_destroy(&waitForDraw);
   pthread_mutex_destroy(&waitForInput);
-  pthread_mutex_destroy(&waitForPacMan);
   pthread_mutex_destroy(&waitForRender);
 }
 
@@ -800,8 +799,8 @@ int main() {
 
   loadSprites();
 
-
-
+  pthread_mutex_init(&waitForInput, NULL);
+  pthread_mutex_lock(&waitForInput);
   
   pthread_mutex_init(&waitForGameEngine, NULL);
   pthread_mutex_lock(&waitForGameEngine);
@@ -811,9 +810,6 @@ int main() {
 
   pthread_mutex_init(&waitForRender, NULL);
   pthread_mutex_lock(&waitForRender);
-
-  sem_init(&ghostMutex, 0, 1);
-  sem_init(&mazeAccess, 0, 1);
   
   int rc;
   pthread_attr_t attr;
@@ -830,7 +826,6 @@ int main() {
   // destroy thread attributes
   pthread_attr_destroy(&attr);
   destroyMutexes();
-  destroySema();
 
   return 0;
 }
