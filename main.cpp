@@ -1,63 +1,183 @@
 // Current Task
-// Overhaul the game
-// Step 1
-// Create a GameEngine Thread
-// It shall be responsible for creating the PacMan thread and managing it
-// Step 2 
-// Render the graphics in the GameEngine Thread
-// Step 3
-// Reduce the number of mutexes used
+// Add Ghost
+// Add its sprite and texture
+// Simply create a function for ghost
+// Add the mechanism for its movement
+// Solve Scenario 1 via Read/Write Problem
+
+
 #include <iostream>
 #include <SFML/Graphics.hpp>
 #include <pthread.h>
 #include <atomic>
-
+#include <time.h>     
+#include <semaphore.h>
 
 #define s std
 #define height 31
 #define width 28
-
+#define cellSize 16   // each block on the game grid corresponds to a 16*16 cell 
 
 // Declare all the Global Variables here for the all the threads to access
 std::atomic<bool> exit_thread_flag{false};
 sf::RenderWindow window;
-sf::Texture pacManTex;
-sf::Sprite pacManSprite;
+sf::Texture pacManTex, ghostTex;
+sf::Sprite pacManSprite, ghostSprite1;
 pthread_mutex_t waitForPacMan, waitForInput, waitForGameEngine, waitForDraw, waitForRender;
+pthread_mutex_t waitForGhost[1], waitForGameEngine1[1];
 int direction = 0;
+
+int readCount = 0;            // keeps track of the number of ghosts reading the maze at a time
+sem_t ghostMutex, mazeAccess; // semaphores used to address the Reader/Writer 
+                              // scenario in the context of the PacMan and the Ghosts
+
 // the underlying 2D Maze
 int maze[height][width] = {
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0,1,1,1,0,0,1},
-    {1,0,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0,1,1,1,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1},
-    {1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1},
-    {1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1},
-    {1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1},
-    {1,0,0,1,1,0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,0,0,1,1,0,0,1},
-    {1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,1,0,0,0,1,1,1,1,1,1,0,0,0,1,0,0,0,0,0,0,1},
-    {1,1,1,1,1,0,0,1,0,0,0,1,0,0,0,0,1,0,0,0,1,0,0,1,1,1,1,1},
-    {0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0},
-    {1,1,1,1,1,0,0,1,0,0,0,1,0,0,0,0,1,0,0,0,1,0,0,1,1,1,1,1},
-    {1,0,0,0,0,0,0,1,0,0,0,1,1,1,1,1,1,0,0,0,1,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1},
-    {1,0,0,1,1,0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,0,0,1,1,0,0,1},
-    {1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1},
-    {1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1},
-    {1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1},
-    {1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0,1,1,1,0,0,1},
-    {1,0,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0,1,1,1,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1} };  
+  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0,1,1,1,0,0,1},
+  {1,0,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0,1,1,1,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1},
+  {1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1},
+  {1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1},
+  {1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1},
+  {1,0,0,1,1,0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,0,0,1,1,0,0,1},
+  {1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1},
+  {1,0,0,0,0,0,0,1,0,0,0,1,1,1,1,1,1,0,0,0,1,0,0,0,0,0,0,1},
+  {1,1,1,1,1,0,0,1,0,0,0,1,3,0,0,0,1,0,0,0,1,0,0,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0},
+  {1,1,1,1,1,0,0,1,0,0,0,1,0,0,0,0,1,0,0,0,1,0,0,1,1,1,1,1},
+  {1,0,0,0,0,0,0,1,0,0,0,1,1,1,1,1,1,0,0,0,1,0,0,0,0,0,0,1},
+  {1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1},
+  {1,0,0,1,1,0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,0,0,1,1,0,0,1},
+  {1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1},
+  {1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1},
+  {1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1},
+  {1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0,1,1,1,0,0,1},
+  {1,0,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0,1,1,1,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1} };  
+
+
+void* ghost(void* anything) {
+
+  //int key = 1, exitPermit = 1, currentState = 0;
+  //bool withInHouse = true;
+  // int initialDirection[3][2] = { {1, 0},
+  //                                {0, -1},
+  //                                {0, -1} };
+
+  //bool temp = false;
+  int numOfMoves = 0, direction = 0, xPos, yPos;
+  sf::Vector2f currPos;
+
+  while(!exit_thread_flag) {
+
+    // if(withInHouse) {
+
+    //     if(key && exitPermit) {
+
+    //       ghostSprite1.move(initialDirection[currentState][0]*16, initialDirection[currentState][1]*16);
+    //       currentState = (currentState + 1)%3;
+    //       if(currentState == 0)
+    //         withInHouse = false;
+    //     }
+    //     else 
+    //       s::cout<<"Lack of Key and Exit Permit\n";
+
+    // }
+    // else {
+      
+    // basic Movement Generator for the Ghost
+    if(numOfMoves == 0) {
+      numOfMoves = (rand()%5) + 1;
+      direction = (rand()%4) + 1;        
+    }
+    --numOfMoves;
+
+    // get the current position of the ghost
+    currPos = ghostSprite1.getPosition();
+    // translate the coordinates with respect to the set cell size in the gird
+    xPos = (currPos.x/16); 
+    yPos = (currPos.y/16);
+      
+    sem_wait(&ghostMutex);
+    // increment the number of ghosts accessing the maze for read
+    ++readCount;
+    // ensure that if a Ghost has accessed the maze
+    // the PacMan has to wait then
+    if(readCount == 1)
+      sem_wait(&mazeAccess);
+    sem_post(&ghostMutex);
+      
+    if(direction == 1) {
+      if(maze[yPos-1][xPos] != 1)
+        ghostSprite1.move(0, -16);
+      else if(maze[yPos+1][xPos] != 1)
+        ghostSprite1.move(0, 16);
+      else if(maze[yPos][xPos-1] != 1)
+        ghostSprite1.move(-16, 0);
+      else if(maze[yPos][xPos+1] != 1)
+        ghostSprite1.move(16, 0);
+    }
+    else if(direction == 2) {
+      if(maze[yPos+1][xPos] != 1)
+        ghostSprite1.move(0, 16);
+      else if(maze[yPos-1][xPos] != 1)
+        ghostSprite1.move(0, -16);
+      else if(maze[yPos][xPos-1] != 1)
+        ghostSprite1.move(-16, 0);
+      else if(maze[yPos][xPos+1] != 1)
+        ghostSprite1.move(16, 0);
+    }
+    else if(direction == 3) {
+      if(maze[yPos][xPos-1] != 1)
+        ghostSprite1.move(-16, 0);
+      else if(maze[yPos+1][xPos] != 1)
+        ghostSprite1.move(0, 16);
+      else if(maze[yPos-1][xPos] != 1)
+        ghostSprite1.move(0, -16);
+      else if(maze[yPos][xPos+1] != 1)
+        ghostSprite1.move(16, 0);            
+    }
+    else if(direction == 4) {
+      if(maze[yPos][xPos+1] != 1)
+        ghostSprite1.move(16, 0);
+      else if(maze[yPos+1][xPos] != 1)
+        ghostSprite1.move(0, 16);
+      else if(maze[yPos-1][xPos] != 1)
+        ghostSprite1.move(0, -16);
+      else if(maze[yPos][xPos-1] != 1)
+        ghostSprite1.move(-16, 0);
+    }
+
+    sem_wait(&ghostMutex);
+    // decrement the number of ghosts accessing the maze for read purposes
+    --readCount;
+    // ensure that the PacMan can only then access the maze 
+    // if there is no active ghost currently accessing the maze
+    if(readCount == 0)
+      sem_post(&mazeAccess);
+    sem_post(&ghostMutex);
+      
+      // if(!temp) {
+      //   s::cout<<"Out of House\n";
+      //   temp = true;
+      // }
+    //}
+    pthread_mutex_unlock(&waitForGhost[0]);
+    pthread_mutex_lock(&waitForGameEngine1[0]);
+  }
+
+  pthread_exit(NULL);
+}
 
 
 // the pacMan thread
@@ -65,21 +185,25 @@ int maze[height][width] = {
 // shall move the PacMan with respect to Walls 
 void* pacMan(void* anything) {
 
-  int localDirection;
+  int localDirection, xPos, yPos;
+  sf::Vector2f currPos;
 
   while(!exit_thread_flag) {
 
-    // wait fot the UI Thread to Update the value of direction 
+    // wait for the UI Thread to Update the value of direction 
     // with respect to the input
     pthread_mutex_lock(&waitForInput);
         
     localDirection = direction;
     if(localDirection) {
       // get the current position of the pac man
-      sf::Vector2f currPos = pacManSprite.getPosition();
+      currPos = pacManSprite.getPosition();
       // translate the coordinates with respect to
       // the size of each cell in the set grid
-      int xPos = (currPos.x/16), yPos = (currPos.y/16);
+      xPos = (currPos.x/16); 
+      yPos = (currPos.y/16);
+      
+      sem_wait(&mazeAccess);
       if(direction == 1) {
         if(maze[yPos-1][xPos] != 1)
           pacManSprite.move(0, -16);
@@ -96,7 +220,8 @@ void* pacMan(void* anything) {
         if(maze[yPos][xPos+1] != 1)
           pacManSprite.move(16, 0);
       }
-    
+      sem_post(&mazeAccess);
+
     }
     // signal the game engine thread that it can proceed further
     pthread_mutex_unlock(&waitForPacMan);
@@ -107,12 +232,20 @@ void* pacMan(void* anything) {
 
 void* gameEngine(void* anything) {
 
+  int ghostCount = 1;
+
   pthread_mutex_init(&waitForInput, NULL);
   pthread_mutex_lock(&waitForInput);
 
   pthread_mutex_init(&waitForPacMan, NULL);
   pthread_mutex_lock(&waitForPacMan);
   
+  pthread_mutex_init(&waitForGhost[0], NULL);
+  pthread_mutex_lock(&waitForGhost[0]);
+
+  pthread_mutex_init(&waitForGameEngine1[0], NULL);
+  pthread_mutex_lock(&waitForGameEngine1[0]);
+
   // initialize thread attributes
   pthread_attr_t attr;
   pthread_attr_init(&attr);
@@ -126,10 +259,25 @@ void* gameEngine(void* anything) {
     exit(-1);
   }
 
+  // create the thread for ghost
+  pthread_t ghostThread1;
+  rc = pthread_create(&ghostThread1, &attr, ghost, NULL);
+  if(rc) {
+    s::cout<<"Error unable to create Ghost thread. Exiting\n";
+    exit(-1);
+  }
+
+  // clock for adding delay
+  sf::Clock delayClock;
+ 
   while(!exit_thread_flag) {
 
     // wait for the PacMan thread to execute
     pthread_mutex_lock(&waitForPacMan);
+
+    // wait for the Ghost Threads to Execute
+    for(int i = 0; i < ghostCount; ++i)
+      pthread_mutex_lock(&waitForGhost[i]);
 
     // signal the ui thread that it can draw the final sprites on to the screen
     pthread_mutex_unlock(&waitForGameEngine);
@@ -140,9 +288,14 @@ void* gameEngine(void* anything) {
     // render everything on to the screen
     window.display();
     
+    // add the effect of delay
+    delayClock.restart();
+    while(delayClock.getElapsedTime().asSeconds() < 0.1) {};
+    
     // signal the ui thread that everything has been rendered
     pthread_mutex_unlock(&waitForRender);
-
+    // signal the Ghost Thread to continue execution
+    pthread_mutex_unlock(&waitForGameEngine1[0]);
   }
   // destroy thread attributes
   pthread_attr_destroy(&attr);
@@ -166,13 +319,12 @@ void userInterface() {
   rectangle.setOutlineThickness(0);
   rectangle.setFillColor(sf::Color::Blue);
 
-  // used for adding delay in the game to make it playable
-  sf::Clock delay;
   // 0 -> Up, 1 -> Down, 2 -> Left, 3 -> Right
   // Value set in the UI Thread and Accessed by the PacMan Thread
   int localDirection = 0;
   // to check for user inputs
   sf::Event event;
+
   while(window.isOpen()) {
 
     while(window.pollEvent(event)) {
@@ -224,22 +376,24 @@ void userInterface() {
     }
     // draw everything else on the screen
     window.draw(pacManSprite);
-
+    window.draw(ghostSprite1);
     // ensures that the game engine can now render, after 
     // the relevant sprites have been draw on the window
     pthread_mutex_unlock(&waitForDraw);
     // ensures that the game engine has rendered everything 
     // before continuing further execution
     pthread_mutex_lock(&waitForRender);
-
-    // add delay for the effect of FrameRate
-    delay.restart();
-    while(delay.getElapsedTime().asSeconds() < 0.1) {}
   }
 
 }
 
-// signal functions to destroy all the mutexes used within the entire process
+// destroy all the semaphores used within the entire process
+void destroySema() {
+  sem_destroy(&ghostMutex);
+  sem_destroy(&mazeAccess);
+}
+
+// destroy all the mutexes used within the entire process
 void destroyMutexes() {
   pthread_mutex_destroy(&waitForGameEngine);
   pthread_mutex_destroy(&waitForDraw);
@@ -252,15 +406,25 @@ int main() {
 
   //std::cout<<"Hello World"<<std::endl;
   
+  // seed the random number generator
+  srand(time(0));
+
   // load the texture for PacMan
   pacManTex.loadFromFile("./Resources/Images/player.png");
   pacManSprite.setTexture(pacManTex);
   // assign the PacMan sprite the correct texture
   pacManSprite.setTextureRect(sf::IntRect(16,0,16,16));
-  pacManSprite.setPosition(16, 16);
   // set the initial starting position
   pacManSprite.setPosition(16,16);
   
+  // load the texture for Ghost
+  ghostTex.loadFromFile("./Resources/Images/blinky.png");
+  ghostSprite1.setTexture(ghostTex);
+  // assign the Ghost Sprite the correct texture
+  ghostSprite1.setTextureRect(sf::IntRect(0,0,16,16));
+  // set the initial starting position
+  ghostSprite1.setPosition(160, 224);
+
   pthread_mutex_init(&waitForGameEngine, NULL);
   pthread_mutex_lock(&waitForGameEngine);
   
@@ -270,10 +434,12 @@ int main() {
   pthread_mutex_init(&waitForRender, NULL);
   pthread_mutex_lock(&waitForRender);
 
+  sem_init(&ghostMutex, 0, 1);
+  sem_init(&mazeAccess, 0, 1);
+  
   int rc;
   pthread_attr_t attr;
   pthread_attr_init(&attr);
-
   // create thread for the game engine
   pthread_t gameEngineThread;
   rc = pthread_create(&gameEngineThread, &attr, gameEngine, NULL);
@@ -286,6 +452,7 @@ int main() {
   // destroy thread attributes
   pthread_attr_destroy(&attr);
   destroyMutexes();
+  destroySema();
 
   return 0;
 }
